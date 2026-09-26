@@ -1,7 +1,22 @@
 import 'package:app_center/store/store_routes.dart';
 import 'package:flutter/widgets.dart';
+import 'package:store_contracts/store_contracts.dart';
 
 class StoreNavigator {
+  static Future<void> pushUnifiedDetails(
+    BuildContext context, {
+    required UnifiedApp app,
+  }) {
+    final identity = app.preferred.identity;
+    return Navigator.of(context).pushNamed(
+      StoreRoutes.namedUnifiedDetails(
+        backendId: identity.backendId,
+        nativeId: identity.nativeId,
+      ),
+      arguments: app,
+    );
+  }
+
   static Future<void> pushDeb(
     BuildContext context, {
     required String id,

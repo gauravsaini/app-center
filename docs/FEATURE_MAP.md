@@ -41,8 +41,8 @@
 - **Code:** `lib/search/search_field.dart`, `lib/search/search_page.dart`, `lib/search/search_provider.dart`, `lib/snapd/snap_search.dart`
 - **Data:** snapd `/v2/find`; deb via PackageKit search.
 - **Notes:** Search error handling was a user PR — still fragile. Future: unified cross-format search (ADR-007/009).
-- **Strangler slice (snap):** when `backend.snap.enabled` (default on) and no category filter is active, plain text search sources snap results from `StoreHost.search()` instead of snapd directly (`unifiedSnapSearchProvider`, `AppCardGrid.fromUnifiedApps`); category browsing and flag-off keep the legacy path. Composition root: `lib/store/store_host_wiring.dart` (the only UI file importing `backend_*`). Tapping a unified card reuses the legacy snap details/install flow.
-- **Strangler slice (deb):** when `backend.deb.enabled` (default on), the Deb search section sources results from `StoreHost.search()` (`unifiedDebSearchProvider`, `_UnifiedDebSearchResults`) instead of appstream; flag-off keeps the legacy appstream path. Unified cards carry a `UnifiedInstallButton` footer (`lib/widgets/unified_install_button.dart`) that installs/removes through `StoreHost.enqueue` with live progress, cancel, and the pre-install permission line (ADR-009 — deb shows "Unsandboxed — full system access"); the action stays disabled until permissions load. Tapping a unified deb card does NOT navigate (package name ≠ appstream id) — deep details navigation awaits the details-page slice.
+- **Strangler slice (snap):** when `backend.snap.enabled` (default on) and no category filter is active, plain text search sources snap results from `StoreHost.search()` instead of snapd directly (`unifiedSnapSearchProvider`, `AppCardGrid.fromUnifiedApps`); category browsing and flag-off keep the legacy path. Composition root: `lib/store/store_host_wiring.dart` (the only UI file importing `backend_*`). Tapping a unified snap card opens the unified details page (`/unified-details`); flag-off keeps the legacy snap details flow.
+- **Strangler slice (deb):** when `backend.deb.enabled` (default on), the Deb search section sources results from `StoreHost.search()` (`unifiedDebSearchProvider`, `_UnifiedDebSearchResults`) instead of appstream; flag-off keeps the legacy appstream path. Unified cards carry a `UnifiedInstallButton` footer (`lib/widgets/unified_install_button.dart`) that installs/removes/updates through `StoreHost.enqueue` with live progress, cancel, and the pre-install permission line (ADR-009 — deb shows "Unsandboxed — full system access"); the action stays disabled until permissions load. Tapping a unified deb card opens the unified details page (`/unified-details`).
 
 ## App details — snap
 
@@ -69,6 +69,15 @@
 - **Route:** `/deb?deb=<id>`
 - **Code:** `lib/deb/deb_page.dart`, `lib/deb/deb_model.dart`, `lib/deb/deb_providers.dart`
 - **Data:** PackageKit / apt metadata, AppStream.
+
+## App details — unified (strangler slice)
+
+- **What:** One details page that renders identically for snap and deb apps: header (icon fallback, name, summary, version, backend badge), permissions section FIRST (ADR-009), install/remove/update through `StoreHost` with live progress + cancel, description, screenshots (when the backend provides them), license/homepage metadata. Multi-backend variants get a backend switcher — never a merge.
+- **User path:** Search → click a unified snap or deb card.
+- **Route:** `/unified-details?backend=<id>&nativeId=<id>`
+- **Code:** `lib/details/unified_details_page.dart`, `lib/store/store_navigator.dart` (`pushUnifiedDetails`), route registration in `lib/store/store_app.dart`
+- **Data:** `StoreHost.getDetails` (snap: confinement permission; deb: "Unsandboxed — full system access"). Screenshots: neither backend exposes them yet — section omitted gracefully.
+- **Notes:** Tapping a unified snap card navigates here instead of the legacy `/snap` page when `backend.snap.enabled`; flag-off and category browsing keep the legacy flow. Tapping a unified deb card navigates here (previously a no-op). Flatpak details stay on the legacy path — no unified flatpak search exists yet.
 
 ## Install a local .deb file
 

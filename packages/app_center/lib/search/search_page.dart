@@ -387,9 +387,10 @@ class _SnapSearchResults extends ConsumerWidget {
 /// `backend.snap.enabled` is on.
 ///
 /// Renders UnifiedApps with `backendId == 'snap'` in the same card grid
-/// style. Tapping a card keeps the legacy snap details/install flow
-/// untouched (navigates by snap name). A missing/unavailable snap backend
-/// degrades to the normal empty state — never a crash.
+/// style. Tapping a card opens the unified details page (strangler-fig
+/// slice); category browsing and flag-off keep the legacy snap details
+/// flow untouched. A missing/unavailable snap backend degrades to the
+/// normal empty state — never a crash.
 class _UnifiedSnapSearchResults extends ConsumerWidget {
   const _UnifiedSnapSearchResults({
     required this.query,
@@ -407,11 +408,8 @@ class _UnifiedSnapSearchResults extends ConsumerWidget {
               slivers: [
                 AppCardGrid.fromUnifiedApps(
                   apps: data,
-                  onTap: (app) => StoreNavigator.pushSearchSnap(
-                    context,
-                    name: app.preferred.identity.nativeId,
-                    query: query,
-                  ),
+                  onTap: (app) =>
+                      StoreNavigator.pushUnifiedDetails(context, app: app),
                 ),
               ],
             )
@@ -433,10 +431,8 @@ class _UnifiedSnapSearchResults extends ConsumerWidget {
 ///
 /// Renders UnifiedApps with `backendId == 'deb'` in the same card grid
 /// style, with install/remove driven by the host (see
-/// [UnifiedInstallButton]). Tapping a card does NOT navigate: unified deb
-/// results are keyed by package name while the legacy deb page needs an
-/// appstream component id — deep details navigation awaits the
-/// details-page strangling slice. A missing/unavailable deb backend
+/// [UnifiedInstallButton]). Tapping a card opens the unified details
+/// page (strangler-fig slice). A missing/unavailable deb backend
 /// degrades to the normal empty state — never a crash.
 class _UnifiedDebSearchResults extends ConsumerWidget {
   const _UnifiedDebSearchResults({
@@ -455,8 +451,8 @@ class _UnifiedDebSearchResults extends ConsumerWidget {
               slivers: [
                 AppCardGrid.fromUnifiedApps(
                   apps: data,
-                  // No navigation: package name != appstream id (see above).
-                  onTap: (_) {},
+                  onTap: (app) =>
+                      StoreNavigator.pushUnifiedDetails(context, app: app),
                 ),
               ],
             )

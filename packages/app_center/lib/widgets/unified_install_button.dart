@@ -44,8 +44,12 @@ class _UnifiedInstallButtonState extends ConsumerState<UnifiedInstallButton> {
 
   bool get _installed => widget.app.preferred.installedVersion != null;
 
-  OperationKind get _actionKind =>
-      _installed ? OperationKind.remove : OperationKind.install;
+  OperationKind get _actionKind {
+    if (_installed && (widget.app.preferred.updateAvailable ?? false)) {
+      return OperationKind.update;
+    }
+    return _installed ? OperationKind.remove : OperationKind.install;
+  }
 
   Future<void> _enqueue() async {
     setState(() => _completed = null);
@@ -184,9 +188,11 @@ class _ActionButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: enabled ? onPressed : null,
       child: Text(
-        kind == OperationKind.install
-            ? l10n.snapActionInstallLabel
-            : l10n.snapActionRemoveLabel,
+        switch (kind) {
+          OperationKind.install => l10n.snapActionInstallLabel,
+          OperationKind.remove => l10n.snapActionRemoveLabel,
+          OperationKind.update => l10n.unifiedDetailsUpdateLabel,
+        },
       ),
     );
   }

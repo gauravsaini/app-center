@@ -167,6 +167,17 @@ heuristic, else community override table. The UI renders one card per
 One install/update/remove = one handle = one state machine. The UI binds to
 this and nothing else.
 
+## 3. `OperationHandle` — the operation state machine
+
+One install/update/remove = one handle = one state machine. The UI binds to
+this and nothing else.
+
+**The full contract lives in
+[`operation-state-machine.md`](operation-state-machine.md) — states, the
+legal-transition DAG, `cancel()` semantics, progress rules, `OperationResult`,
+idempotency, engine rules, crash recovery, and the exam assertions. That
+document is authoritative; this section is a sketch.**
+
 ```dart
 abstract class OperationHandle {
   String get id;                       // unique per operation
@@ -180,30 +191,11 @@ abstract class OperationHandle {
   Future<void> cancel();
 }
 
-@freezed
-class OperationState with _$OperationState {
-  const factory OperationState.queued() = Queued;
-  const factory OperationState.authenticating() = Authenticating;
-  const factory OperationState.downloading({
-    required int bytesDone, required int bytesTotal,
-  }) = Downloading;
-  const factory OperationState.installing({required double fraction}) = Installing;
-  const factory OperationState.done() = Done;
-  const factory OperationState.cancelled() = Cancelled;
-  const factory OperationState.failed(StoreException error) = Failed;
-  // Terminal: done | cancelled | failed. All others non-terminal.
-}
+// States: queued → authenticating → preparing → downloading →
+// verifying (optional) → applying → done | cancelled | failed,
+// plus restoring (re-attach after restart) and cancelling (transitional).
+// See operation-state-machine.md §1–§2 for the exact DAG.
 ```
-
-**Contract rules:**
-
-- State transitions are monotonic: queued → … → terminal. Never backwards,
-  never terminal → non-terminal.
-- `failed` ALWAYS carries a typed `StoreException` (§7) — the host maps it
-  to a human message + retry/cancel affordance. Raw stderr never reaches UI.
-- Cancellation is cooperative but prompt: ≤2s from `cancel()` to terminal.
-- Progress fractions are best-effort; the UI shows indeterminate when
-  `bytesTotal` is unknown. Backends MUST NOT fake 99%.
 
 ## 4. `UnifiedCatalog` (host)
 
@@ -272,18 +264,17 @@ Reserved namespace: `backend.<id>.enabled` is the per-backend kill switch.
 
 ## 7. Error taxonomy
 
+**The full taxonomy lives in [`operation-state-machine.md`](operation-state-machine.md)
+§7 — twelve typed exceptions, each with a stable `code`, `debugDetail`, and a
+structured `Remediation` (retry / freeSpace / checkNetwork / fixBackend /
+reportBug / none). Sketch:**
+
 ```dart
 sealed class StoreException implements Exception {
   String get code;           // 'network', 'auth_denied', 'disk_full', …
   String get debugDetail;    // for logs, never shown raw to users
+  Remediation get remediation; // structured next step — not a string
 }
-class NetworkException extends StoreException {}       // retryable
-class AuthDeniedException extends StoreException {}    // user said no
-class DiskFullException extends StoreException {}
-class BackendUnavailableException extends StoreException {} // backend died mid-op
-class AppNotFoundException extends StoreException {}
-class ConflictException extends StoreException {}      // already in desired state
-class UnknownStoreException extends StoreException {}  // catch-all, logged
 ```
 
 Rules: every backend maps its native errors into this taxonomy. `failed`
@@ -314,9 +305,11 @@ imports `backend_snap`, the build fails. Architecture as code, not as wiki.
 `store_contracts` ships a test suite every backend package MUST pass:
 
 - `search` returns within timeout, stream cancellable, ids unique.
-- `install` → handle starts `queued`, reaches terminal, transitions monotonic.
-- `cancel()` from downloading → `cancelled` within 2s.
-- Installing installed app → immediate `done` (idempotent, no re-download).
+- State-machine assertions — see
+  [`operation-state-machine.md`](operation-state-machine.md) §11: legal DAG
+  paths, cancel-from-every-phase, progress monotonicity, typed `failed`
+  errors, double-enqueue dedup, terminal silence, idempotent no-op,
+  `restoring` for re-attached handles.
 - Unknown id → `AppNotFoundException`, not a crash.
 - All thrown errors are `StoreException` subtypes.
 - `isAvailable()` < 200ms, no side effects, callable twice safely.

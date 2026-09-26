@@ -16,6 +16,8 @@ main (upstream) … feat/unified-store → feat/store-contracts → feat/backend
 
 - New work: `git checkout -b feat/<scope> <parent-branch>`
 - PR: `gh pr create --base <parent-branch> --head feat/<scope>`
+- **Always pass `--repo gauravsaini/libreapp-center`**: `gh` otherwise resolves
+  to the `upstream` remote (ubuntu/app-center) and the create fails.
 - The repo is private; PRs target the parent branch, never `main` directly.
 - Merge bottom-up when the stack is green.
 - Subagents follow the same rule: branches + stacked PRs, no worktrees.

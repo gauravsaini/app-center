@@ -41,6 +41,7 @@
 - **Code:** `lib/search/search_field.dart`, `lib/search/search_page.dart`, `lib/search/search_provider.dart`, `lib/snapd/snap_search.dart`
 - **Data:** snapd `/v2/find`; deb via PackageKit search.
 - **Notes:** Search error handling was a user PR — still fragile. Future: unified cross-format search (ADR-007/009).
+- **Strangler slice:** when `backend.snap.enabled` (default on) and no category filter is active, plain text search sources snap results from `StoreHost.search()` instead of snapd directly (`unifiedSnapSearchProvider`, `AppCardGrid.fromUnifiedApps`); category browsing and flag-off keep the legacy path. Composition root: `lib/store/store_host_wiring.dart` (the only UI file importing `backend_*`). Tapping a unified card reuses the legacy snap details/install flow.
 
 ## App details — snap
 

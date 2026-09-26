@@ -19,7 +19,8 @@ class MapFeatureFlags implements FeatureFlags {
   /// everywhere read as `false`/`0`/`''` — never throw.
   static const _defaults = <String, Object>{
     'backend.flatpak.enabled': true,
-    'catalog.backend_order': 'flatpak',
+    'backend.snap.enabled': true,
+    'catalog.backend_order': 'flatpak,snap',
     'catalog.search_timeout_ms': 5000,
     'engine.stall_timeout_ms': 30000,
     'engine.max_concurrent_per_backend': 1,

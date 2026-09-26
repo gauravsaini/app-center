@@ -10,6 +10,7 @@ import 'package:appstream/appstream.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:snapd/snapd.dart';
+import 'package:store_contracts/store_contracts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yaru/yaru.dart';
 
@@ -67,6 +68,24 @@ class AppCard extends StatelessWidget {
              },
            ),
          ),
+       );
+
+  /// Card for a unified-store result (strangler-fig slice).
+  ///
+  /// Renders the preferred variant; the snap slice keeps the legacy
+  /// details/install flow by navigating to the snap page by name.
+  AppCard.fromUnifiedApp({
+    required UnifiedApp app,
+    VoidCallback? onTap,
+  }) : this(
+         key: ValueKey(app.groupId),
+         title: AppTitle(
+           title: app.preferred.name,
+           showPublisher: false,
+         ),
+         summary: app.preferred.summary,
+         iconUrl: app.preferred.iconUrl.isEmpty ? null : app.preferred.iconUrl,
+         onTap: onTap,
        );
 
   final AppTitle title;

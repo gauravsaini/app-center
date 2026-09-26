@@ -248,6 +248,14 @@ class _DebSearchResults extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Strangler-fig slice: when the deb backend flag is on, source deb
+    // results from StoreHost instead of appstream directly. Flag-off
+    // keeps the legacy path untouched.
+    if (ref.watch(storeFlagsProvider).isEnabled('backend.deb.enabled') &&
+        query != null) {
+      return _UnifiedDebSearchResults(query: query!);
+    }
+
     final l10n = AppLocalizations.of(context);
     final results = ref.watch(appstreamSearchProvider(query ?? ''));
     return results.when(
@@ -414,6 +422,51 @@ class _UnifiedSnapSearchResults extends ConsumerWidget {
       error: (error, stack) => ErrorView(
         error: error,
         onRetry: () => ref.invalidate(unifiedSnapSearchProvider(query)),
+      ),
+      loading: () => const Center(child: YaruCircularProgressIndicator()),
+    );
+  }
+}
+
+/// Deb results sourced from the unified store (StoreHost) when
+/// `backend.deb.enabled` is on.
+///
+/// Renders UnifiedApps with `backendId == 'deb'` in the same card grid
+/// style, with install/remove driven by the host (see
+/// [UnifiedInstallButton]). Tapping a card does NOT navigate: unified deb
+/// results are keyed by package name while the legacy deb page needs an
+/// appstream component id — deep details navigation awaits the
+/// details-page strangling slice. A missing/unavailable deb backend
+/// degrades to the normal empty state — never a crash.
+class _UnifiedDebSearchResults extends ConsumerWidget {
+  const _UnifiedDebSearchResults({
+    required this.query,
+  });
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final results = ref.watch(unifiedDebSearchProvider(query));
+    return results.when(
+      data: (data) => data.isNotEmpty
+          ? ResponsiveLayoutScrollView(
+              slivers: [
+                AppCardGrid.fromUnifiedApps(
+                  apps: data,
+                  // No navigation: package name != appstream id (see above).
+                  onTap: (_) {},
+                ),
+              ],
+            )
+          : _NoSearchResults(
+              title: l10n.searchPageNoResults(query),
+              hint: l10n.searchPageNoResultsHint,
+            ),
+      error: (error, stack) => ErrorView(
+        error: error,
+        onRetry: () => ref.invalidate(unifiedDebSearchProvider(query)),
       ),
       loading: () => const Center(child: YaruCircularProgressIndicator()),
     );

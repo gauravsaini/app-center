@@ -2,6 +2,7 @@ import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/snapd.dart';
 import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/widgets/widgets.dart';
+import 'package:backend_deb/testing.dart';
 import 'package:backend_flatpak/testing.dart';
 import 'package:backend_snap/testing.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,10 +18,13 @@ void main() {
   setUp(registerMockRatingsService);
   tearDown(resetAllServices);
 
+  // All three backends stubbed: the real PackageKit transport would touch
+  // D-Bus (unavailable in tests) and leave a pending retry timer behind.
   StoreHost stubHost() => buildStoreHost(
     MapFeatureFlags(),
     snapTransport: StubSnapdTransport(),
     flatpakTransport: StubFlatpakTransport(),
+    debTransport: StubPackageKitTransport(),
   );
 
   testWidgets('flag on: snap results come from the unified store', (

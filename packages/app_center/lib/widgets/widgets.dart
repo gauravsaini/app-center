@@ -9,3 +9,4 @@ export 'clickable.dart';
 export 'dialogs.dart';
 export 'screenshot_gallery.dart';
 export 'snap_grid.dart';
+export 'unified_install_button.dart';

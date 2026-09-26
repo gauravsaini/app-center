@@ -1,8 +1,7 @@
 import 'package:backend_flatpak/backend_flatpak.dart';
+import 'package:backend_flatpak/testing.dart';
 import 'package:store_contracts/exam.dart';
 import 'package:test/test.dart';
-
-import 'stub_transport.dart';
 
 void main() {
   group('flatpak backend', () {

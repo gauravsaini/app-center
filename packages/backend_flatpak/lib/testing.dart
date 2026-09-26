@@ -1,4 +1,7 @@
 /// Scripted [FlatpakTransport] for tests. Never touches the live system.
+///
+/// Import via `package:backend_flatpak/testing.dart` — kept out of the
+/// main barrel so production code never depends on it.
 library;
 
 import 'dart:async';

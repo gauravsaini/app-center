@@ -6,6 +6,7 @@ import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/multisnap_model.dart';
 import 'package:app_center/snapd/snapd.dart';
 import 'package:app_center/store/store.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -207,6 +208,37 @@ class InstallAll extends ConsumerWidget {
 }
 
 // TODO: remove redundancies between `_DebSearchResults` and `SnapSearchResults`
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults({
+    this.title,
+    this.hint,
+  });
+
+  final String? title;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: ResponsiveLayout.of(context).padding,
+      child: Column(
+        children: [
+          const Spacer(),
+          Text(
+            title ?? '',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          Text(
+            hint ?? '',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const Spacer(flex: 3),
+        ],
+      ),
+    );
+  }
+}
+
 class _DebSearchResults extends ConsumerWidget {
   const _DebSearchResults({
     this.query,
@@ -268,8 +300,20 @@ class _SnapSearchResults extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final category = ref.watch(snapCategoryProvider(initialCategory));
+
+    // Strangler-fig slice: when the snap backend flag is on and this is a
+    // plain text search (no category filter — the unified host has no
+    // category filtering yet), source snap results from StoreHost instead
+    // of snapd directly. Category browsing and flag-off keep the legacy
+    // path untouched.
+    if (ref.watch(storeFlagsProvider).isEnabled('backend.snap.enabled') &&
+        category == null &&
+        query != null) {
+      return _UnifiedSnapSearchResults(query: query!);
+    }
+
+    final l10n = AppLocalizations.of(context);
     final results = ref.watch(
       sortedSnapSearchProvider(
         SnapSearchParameters(
@@ -325,6 +369,51 @@ class _SnapSearchResults extends ConsumerWidget {
             ),
           );
         },
+      ),
+      loading: () => const Center(child: YaruCircularProgressIndicator()),
+    );
+  }
+}
+
+/// Snap results sourced from the unified store (StoreHost) when
+/// `backend.snap.enabled` is on.
+///
+/// Renders UnifiedApps with `backendId == 'snap'` in the same card grid
+/// style. Tapping a card keeps the legacy snap details/install flow
+/// untouched (navigates by snap name). A missing/unavailable snap backend
+/// degrades to the normal empty state — never a crash.
+class _UnifiedSnapSearchResults extends ConsumerWidget {
+  const _UnifiedSnapSearchResults({
+    required this.query,
+  });
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final results = ref.watch(unifiedSnapSearchProvider(query));
+    return results.when(
+      data: (data) => data.isNotEmpty
+          ? ResponsiveLayoutScrollView(
+              slivers: [
+                AppCardGrid.fromUnifiedApps(
+                  apps: data,
+                  onTap: (app) => StoreNavigator.pushSearchSnap(
+                    context,
+                    name: app.preferred.identity.nativeId,
+                    query: query,
+                  ),
+                ),
+              ],
+            )
+          : _NoSearchResults(
+              title: l10n.searchPageNoResults(query),
+              hint: l10n.searchPageNoResultsHint,
+            ),
+      error: (error, stack) => ErrorView(
+        error: error,
+        onRetry: () => ref.invalidate(unifiedSnapSearchProvider(query)),
       ),
       loading: () => const Center(child: YaruCircularProgressIndicator()),
     );

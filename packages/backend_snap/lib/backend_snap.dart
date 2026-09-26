@@ -9,4 +9,5 @@ library backend_snap;
 export 'package:store_contracts/store_contracts.dart';
 export 'src/backend.dart';
 export 'src/handle.dart';
+export 'src/snapd_transport.dart';
 export 'src/transport.dart';

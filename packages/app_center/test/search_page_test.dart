@@ -1,12 +1,14 @@
 import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/multisnap_model.dart';
 import 'package:app_center/snapd/snapd.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:app_center_ratings_client/app_center_ratings_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
+import 'package:store_host/store_host.dart';
 import 'package:ubuntu_service/ubuntu_service.dart';
 import 'package:ubuntu_widgets/ubuntu_widgets.dart';
 
@@ -25,6 +27,10 @@ const snapRating = Rating(
 void main() {
   setUp(() => registerMockRatingsService(rating: snapRating));
   tearDown(resetAllServices);
+
+  // Plain-query tests below pin `backend.snap.enabled` off: they target the
+  // legacy `snapSearchProvider` path with mocked snapd data. The unified
+  // path (flag on) is covered by `unified_search_test.dart`.
 
   final mockSearchProvider = createMockSnapSearchProvider({
     const SnapSearchParameters(query: 'testsn'): [
@@ -64,6 +70,9 @@ void main() {
     await tester.pumpApp(
       (_) => ProviderScope(
         overrides: [
+          storeFlagsProvider.overrideWithValue(
+            MapFeatureFlags({'backend.snap.enabled': false}),
+          ),
           snapSearchProvider.overrideWith(
             (ref, query) => mockSearchProvider(query),
           ),
@@ -174,6 +183,9 @@ void main() {
       await tester.pumpApp(
         (_) => ProviderScope(
           overrides: [
+            storeFlagsProvider.overrideWithValue(
+              MapFeatureFlags({'backend.snap.enabled': false}),
+            ),
             snapSearchProvider.overrideWith(
               (ref, query) => mockSearchProvider(query),
             ),
@@ -202,6 +214,9 @@ void main() {
       await tester.pumpApp(
         (_) => ProviderScope(
           overrides: [
+            storeFlagsProvider.overrideWithValue(
+              MapFeatureFlags({'backend.snap.enabled': false}),
+            ),
             snapSearchProvider.overrideWith(
               (ref, query) => mockSearchProvider(query),
             ),
@@ -233,6 +248,9 @@ void main() {
       await tester.pumpApp(
         (_) => ProviderScope(
           overrides: [
+            storeFlagsProvider.overrideWithValue(
+              MapFeatureFlags({'backend.snap.enabled': false}),
+            ),
             snapSearchProvider.overrideWith(
               (ref, query) => mockSearchProvider(query),
             ),
@@ -267,6 +285,9 @@ void main() {
       await tester.pumpApp(
         (_) => ProviderScope(
           overrides: [
+            storeFlagsProvider.overrideWithValue(
+              MapFeatureFlags({'backend.snap.enabled': false}),
+            ),
             snapSearchProvider.overrideWith(
               (ref, query) => mockSearchProvider(query),
             ),

@@ -11,6 +11,8 @@ dependencies:
   app_center_ratings_client: ^1.0.0
   appstream: ^0.2.11
   args: ^2.5.0
+  backend_flatpak: ^0.1.0
+  backend_snap: ^0.1.0
   cached_network_image: ^3.4.1
   clock: ^1.1.1
   collection: ^1.18.0
@@ -46,6 +48,8 @@ dependencies:
   snapcraft_launcher: ^0.1.0
   snapd: ^0.7.4
   snowball_stemmer: ^0.1.0
+  store_contracts: ^0.1.0
+  store_host: ^0.1.0
   ubuntu_localizations: ^0.5.2+1
   ubuntu_logger: ^0.2.1
   ubuntu_service: ^0.4.0

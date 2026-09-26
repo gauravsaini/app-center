@@ -134,6 +134,8 @@ void main() {
     test('unknown keys return defaults, never throw', () {
       final flags = MapFeatureFlags();
       expect(flags.isEnabled('backend.flatpak.enabled'), isTrue);
+      expect(flags.isEnabled('backend.snap.enabled'), isTrue);
+      expect(flags.getString('catalog.backend_order'), 'flatpak,snap');
       expect(flags.isEnabled('no.such.key'), isFalse);
       expect(flags.getInt('catalog.search_timeout_ms'), 5000);
       expect(flags.getInt('no.such.key'), 0);

@@ -88,6 +88,20 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.1"
+  backend_flatpak:
+    dependency: "direct main"
+    description:
+      path: "../backend_flatpak"
+      relative: true
+    source: path
+    version: "0.1.0"
+  backend_snap:
+    dependency: "direct main"
+    description:
+      path: "../backend_snap"
+      relative: true
+    source: path
+    version: "0.1.0"
   boolean_selector:
     dependency: transitive
     description:
@@ -1264,6 +1278,20 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
+  store_contracts:
+    dependency: "direct main"
+    description:
+      path: "../store_contracts"
+      relative: true
+    source: path
+    version: "0.1.0"
+  store_host:
+    dependency: "direct main"
+    description:
+      path: "../store_host"
+      relative: true
+    source: path
+    version: "0.1.0"
   stream_channel:
     dependency: transitive
     description:

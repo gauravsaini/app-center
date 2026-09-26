@@ -9,12 +9,40 @@
 ## The Dream
 
 A kid installs Ubuntu, Fedora, Arch, or NixOS. She opens the store. She types
-"video editor". She gets **one** honest list — native packages, Flatpaks, Snaps,
-AppImages — with ratings, screenshots, and a single Install button. It just
-works. Updates come from one place. Permissions are visible before install.
+"video editor". She gets **one** honest card per app — not three entries for
+three formats — with ratings, screenshots, permissions, and a single Install
+button. It just works. Updates come from one place. Permissions are visible
+before install.
 
 No one asks "which package format should I use?" ever again. That question is
 a bug, and we are the fix.
+
+## The Core Thesis: Reinvent, Don't Wrap
+
+Anyone can call three APIs and put them in tabs. GNOME Software did it.
+That's not the dream — that's a wrapper.
+
+Wrapping asks: "how do I show snap results next to Flatpak results?"
+Reinventing asks: "what IS an app, when it exists in three formats at once?"
+And answers: **one app, one card** — the format is a detail, like a download
+mirror.
+
+We use the APIs — snapd, PackageKit, Flatpak — because reinventing the
+plumbing would be madness. But everything the user touches, we rethink:
+
+- **Identity:** the store thinks in *apps*, not packages. Three formats, one
+  `UnifiedApp`. No one should ever see "VLC" three times.
+- **Operations:** installing is not "fire a command and poll". It's a
+  cancellable state machine with honest progress and typed errors.
+- **Trust:** permissions are shown *before* install, not buried in a wiki.
+  Trust is designed, not documented.
+- **Discovery:** "video editor" should one day answer "I want to edit video"
+  with a curated stack — not a package list. Search is the starting line.
+- **Metadata:** consuming AppStream is wrapping; the community index
+  (Phase 3) is reinventing — a metadata layer owned by no one.
+
+The test for every feature: *did we rethink it, or did we just wire the API
+to a button?* Wrappers don't ship.
 
 ## The Problem: Fragmentation
 
@@ -51,8 +79,9 @@ Fragmentation is not freedom. Freedom is **choice without confusion**.
 - **Libre:** GPL forever. Forkable by design. No single company controls the
   index, the client, or the roadmap. If we ever go evil, you fork us — that's
   the guarantee, in writing.
-- **Better:** faster than anything before it (measured, not claimed),
-  multi-backend from day one, honest UI — no ads, no dark patterns, no
+- **Better:** faster than anything before it (measured, not claimed);
+  **reinvented, not wrapped** — one app per card, operations you can cancel,
+  permissions before install; honest UI — no ads, no dark patterns, no
   snap-first bias, no "recommended" that means "sponsored".
 
 ## The Strategy: Beachhead → Expansion
@@ -61,7 +90,8 @@ We don't boil the ocean. We take one beachhead and expand.
 
 - **Phase 0 — The fork (now).** Fork Ubuntu's App Center. Three backends, one
   store: **snap + deb + Flatpak**, behind a plugin interface. Prove the
-  architecture. Prove the UX. This is the Brave move: small delta, clean
+  architecture — and prove the reinvention: one card per app, operations you
+  can cancel, trust you can see. This is the Brave move: small delta, clean
   rebase, upstream improvements for free.
 - **Phase 1 — More backends.** AppImage, and whoever shows up next, as plugins.
   If it installs software on Linux, it plugs into the store.
@@ -85,6 +115,9 @@ We don't boil the ocean. We take one beachhead and expand.
 5. **No dark patterns.** No ads, no sponsored placement disguised as
    "recommended", no scaring users away from formats we dislike. The store
    serves the user, not a packaging agenda.
+6. **Reinvent, don't wrap.** APIs are the starting line, not the finish line.
+   Every feature must answer: did we rethink it, or just wire the API to a
+   button? Wrappers don't ship.
 
 ## Non-Goals
 
@@ -96,10 +129,11 @@ We don't boil the ocean. We take one beachhead and expand.
 
 ## The One-Line Pitch
 
-**The App Store for \*nix — every format, one search, libre forever.**
+**One store for all of \*nix — apps, not packages. Libre forever.**
 
 ---
 
 *This is the sapna. Everything we build — every branch, every plugin, every
-benchmark — must answer one question: does this get us closer to one store
-for all of \*nix? If not, it doesn't ship.*
+benchmark — must answer two questions: does this get us closer to one store
+for all of \*nix — and did we reinvent it, or just wrap an API? If not, it
+doesn't ship.*

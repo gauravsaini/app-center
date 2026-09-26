@@ -297,8 +297,9 @@ packages/
                        # MUST NOT depend on backend_* (enforced by CI import lint).
 ```
 
-CI enforces the dependency arrows with an import linter: if `app_center`
-imports `backend_snap`, the build fails. Architecture as code, not as wiki.
+Repo scripts enforce the dependency arrows with an import linter (local first;
+GitHub CI last): if `app_center` imports `backend_snap`, the build fails.
+Architecture as code, not as wiki.
 
 ## 9. Contract tests — the backend exam
 

@@ -22,7 +22,8 @@ Melos packages with enforced dependency arrows:
 - `backend_snap`, `backend_deb`, `backend_flatpak` — implement `StoreBackend`.
 - `app_center` — UI shell. Depends on `store_contracts` + `store_host` ONLY.
 
-A CI import linter fails the build if `app_center` imports `backend_*`.
+A repo-script import linter fails the build if `app_center` imports `backend_*`
+— runs locally for now; GitHub CI is the last step.
 Architecture as code, not as wiki.
 
 ## Rationale

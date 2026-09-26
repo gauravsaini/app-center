@@ -1,4 +1,4 @@
-# ADR-011: Benchmarks are CI gates, not dashboards
+# ADR-011: Benchmarks are gates, not dashboards
 
 Date: 2026-09-26
 Status: Accepted
@@ -10,7 +10,7 @@ believe a faster store that can't show the measurement.
 
 ## Decision
 
-These are CI gates with budgets — a regression fails the build like a test:
+These are gates with budgets — a regression fails the build like a test:
 
 - **Cold-start time** — process launch to interactive store.
 - **Search latency** — p95 per query, per backend and merged.
@@ -24,7 +24,8 @@ Numbers are the moat for "better". Dashboards get ignored; gates get fixed.
 
 ## Consequences
 
-- Benchmarks run per-PR on reference hardware profiles.
+- Benchmarks run locally before push for now, on reference hardware profiles;
+  GitHub CI is the last step.
 - Budgets start loose and tighten as real numbers come in — but they only
   move by ADR, never by quiet edit.
 

@@ -15,7 +15,7 @@ memory.
 | [008](ADR-008-operation-state-machine.md) | Operations are a state machine, not a button | Accepted |
 | [009](ADR-009-reinvent-dont-wrap.md) | Reinvent, don't wrap | Accepted |
 | [010](ADR-010-runtime-detection-flags.md) | Backends are detected at runtime; flags have owners | Accepted |
-| [011](ADR-011-benchmarks-as-gates.md) | Benchmarks are CI gates, not dashboards | Accepted |
+| [011](ADR-011-benchmarks-as-gates.md) | Benchmarks are gates, not dashboards | Accepted |
 
 Format: Context → Decision → Rationale → Consequences → Revisit when.
 Superseded ADRs stay in place with status updated — history is not rewritten.

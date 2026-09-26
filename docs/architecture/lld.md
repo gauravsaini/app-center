@@ -183,7 +183,8 @@ abstract class OperationHandle {
   String get id;                       // unique per operation
   AppIdentity get app;
   OperationKind get kind;              // install | remove | update
-  ValueStream<OperationState> get state; // current + updates
+  Stream<OperationState> get state;   // updates; terminal states emit nothing further
+  OperationState get current;        // latest state, synchronously
 
   /// Request cancellation. MUST be safe to call in any state;
   /// no-op when already terminal. Backend stops work ASAP and

@@ -38,6 +38,9 @@ The UI binds to this and nothing else.
 Phases may be **skipped forward freely** (a remove has no `downloading`;
 a backend may skip `verifying`), but a phase is **never re-entered** once
 left. Self-transitions are allowed only for progress updates.
+One exception: `queued → done` is legal **only** when the result carries
+`noop: true` — the honest no-op (already installed, nothing fetched,
+nothing changed). A non-noop `done` must arrive via a real phase path.
 
 ```
 queued         → authenticating | preparing | downloading | verifying
@@ -200,7 +203,8 @@ abstract class OperationHandle {
   String get id;
   AppIdentity get app;
   OperationKind get kind;              // install | remove | update
-  ValueStream<OperationState> get state;
+  Stream<OperationState> get state;  // updates; terminal states emit nothing further
+  OperationState get current;        // latest state, synchronously
 
   /// Request cancellation. Safe in any state; no-op when terminal.
   /// Backend reaches a terminal state within 2s.

@@ -72,8 +72,10 @@ class AppCard extends StatelessWidget {
 
   /// Card for a unified-store result (strangler-fig slice).
   ///
-  /// Renders the preferred variant; the snap slice keeps the legacy
-  /// details/install flow by navigating to the snap page by name.
+  /// Renders the preferred variant with an install/remove action driven
+  /// by the StoreHost (UnifiedInstallButton in widgets.dart). Tapping the
+  /// card body keeps the legacy details flow; tapping the action never
+  /// navigates.
   AppCard.fromUnifiedApp({
     required UnifiedApp app,
     VoidCallback? onTap,
@@ -85,6 +87,7 @@ class AppCard extends StatelessWidget {
          ),
          summary: app.preferred.summary,
          iconUrl: app.preferred.iconUrl.isEmpty ? null : app.preferred.iconUrl,
+         footer: UnifiedInstallButton(app: app),
          onTap: onTap,
        );
 

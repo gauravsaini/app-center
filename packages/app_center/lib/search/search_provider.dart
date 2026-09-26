@@ -85,3 +85,17 @@ final unifiedSnapSearchProvider =
                 .toList(growable: false),
           );
     });
+
+/// Deb slice of the unified search: only `backendId == 'deb'` results.
+/// Derived from [unifiedSearchProvider] so both share one host
+/// subscription per query.
+final unifiedDebSearchProvider =
+    Provider.family<AsyncValue<List<UnifiedApp>>, String>((ref, query) {
+      return ref
+          .watch(unifiedSearchProvider(query))
+          .whenData(
+            (apps) => apps
+                .where((app) => app.preferred.identity.backendId == 'deb')
+                .toList(growable: false),
+          );
+    });

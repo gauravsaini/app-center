@@ -20,7 +20,8 @@ class MapFeatureFlags implements FeatureFlags {
   static const _defaults = <String, Object>{
     'backend.flatpak.enabled': true,
     'backend.snap.enabled': true,
-    'catalog.backend_order': 'flatpak,snap',
+    'backend.deb.enabled': true,
+    'catalog.backend_order': 'flatpak,snap,deb',
     'catalog.search_timeout_ms': 5000,
     'engine.stall_timeout_ms': 30000,
     'engine.max_concurrent_per_backend': 1,

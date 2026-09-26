@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:app_center/deb/deb.dart';
+import 'package:app_center/details/details.dart';
 import 'package:app_center/error/error.dart';
 import 'package:app_center/games/games.dart';
 import 'package:app_center/gstreamer/gstreamer.dart';
@@ -21,6 +22,7 @@ import 'package:flutter/material.dart' hide AboutDialog, showAboutDialog;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:snapd/snapd.dart';
+import 'package:store_contracts/store_contracts.dart';
 import 'package:yaru/yaru.dart';
 
 // Making a provider to provide navigatorKeyTwo
@@ -233,6 +235,23 @@ class _StoreAppHome extends ConsumerWidget {
             builder: (_) => YaruDetailPage(
               appBar: searchField,
               body: SnapPage(snapName: StoreRoutes.snapOf(settings)!),
+            ),
+          ),
+          StoreRoutes.unifiedDetails => MaterialPageRoute(
+            settings: settings,
+            builder: (_) => YaruDetailPage(
+              appBar: searchField,
+              body: UnifiedDetailsPage(
+                identity: AppIdentity(
+                  backendId:
+                      StoreRoutes.unifiedDetailsBackendOf(settings) ?? '',
+                  nativeId:
+                      StoreRoutes.unifiedDetailsNativeIdOf(settings) ?? '',
+                ),
+                app: settings.arguments is UnifiedApp
+                    ? settings.arguments as UnifiedApp
+                    : null,
+              ),
             ),
           ),
           StoreRoutes.search => MaterialPageRoute(

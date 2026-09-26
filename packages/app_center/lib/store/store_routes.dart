@@ -8,6 +8,7 @@ abstract class StoreRoutes {
   static const snap = '/snap';
   static const manage = '/manage';
   static const search = '/search';
+  static const unifiedDetails = '/unified-details';
   static const externalTools = '/externalTools';
   static const gstreamer = '/gstreamer';
 
@@ -29,6 +30,22 @@ abstract class StoreRoutes {
 
   static String? snapOf(RouteSettings route) =>
       Uri.parse(route.name ?? '').queryParameters['snap'];
+
+  static String namedUnifiedDetails({
+    required String backendId,
+    required String nativeId,
+  }) {
+    return namedRoute(StoreRoutes.unifiedDetails, {
+      'backend': backendId,
+      'nativeId': nativeId,
+    });
+  }
+
+  static String? unifiedDetailsBackendOf(RouteSettings route) =>
+      Uri.parse(route.name ?? '').queryParameters['backend'];
+
+  static String? unifiedDetailsNativeIdOf(RouteSettings route) =>
+      Uri.parse(route.name ?? '').queryParameters['nativeId'];
 
   static String? queryOf(RouteSettings route) =>
       Uri.parse(route.name ?? '').queryParameters['query'];

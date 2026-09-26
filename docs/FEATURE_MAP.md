@@ -136,5 +136,5 @@
 ## Deliberately absent (per ADRs)
 
 - **Ratings UI** — degraded in Phase 0 (ADR-005). Entries above that mention ratings will lose those widgets.
-- **Flatpak apps** — not yet present; first vertical slice behind `backend.flatpak.enabled` (ADR-006).
+- **Flatpak apps** — backend exists (`packages/backend_flatpak`, CLI wrapper, passes contract exam); UI/host wiring behind `backend.flatpak.enabled` pending (ADR-006).
 - **One-card unified apps** — not yet; today snaps and debs are separate cards (ADR-007 is the future).

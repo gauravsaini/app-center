@@ -4,7 +4,6 @@ library;
 
 import 'backend.dart';
 import 'identity.dart';
-import 'operation.dart';
 
 /// One app across formats (ADR-007): the merged view the UI renders
 /// as a single card with a format picker.

@@ -30,7 +30,11 @@ sealed class StoreException implements Exception {
 
 /// Offline, timeout, DNS, unreachable mirror.
 final class NetworkException extends StoreException {
-  const NetworkException({required this.debugDetail, this.attemptedHost, this.backendId});
+  const NetworkException({
+    required this.debugDetail,
+    this.attemptedHost,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -46,7 +50,11 @@ final class NetworkException extends StoreException {
 
 /// User denied / dismissed the privilege prompt, or auth expired.
 final class AuthException extends StoreException {
-  const AuthException({required this.debugDetail, this.kind = AuthKind.denied, this.backendId});
+  const AuthException({
+    required this.debugDetail,
+    this.kind = AuthKind.denied,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -56,10 +64,10 @@ final class AuthException extends StoreException {
 
   @override
   String get code => switch (kind) {
-        AuthKind.denied => 'auth_denied',
-        AuthKind.dismissed => 'auth_dismissed',
-        AuthKind.expired => 'auth_expired',
-      };
+    AuthKind.denied => 'auth_denied',
+    AuthKind.dismissed => 'auth_dismissed',
+    AuthKind.expired => 'auth_expired',
+  };
   // Never nag the user for saying no.
   @override
   Remediation get remediation => Remediation.none;
@@ -69,8 +77,12 @@ enum AuthKind { denied, dismissed, expired }
 
 /// Not enough disk space. Carries numbers so the UI can say how much.
 final class DiskSpaceException extends StoreException {
-  const DiskSpaceException(
-      {required this.debugDetail, required this.neededBytes, required this.availableBytes, this.backendId});
+  const DiskSpaceException({
+    required this.debugDetail,
+    required this.neededBytes,
+    required this.availableBytes,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -87,7 +99,11 @@ final class DiskSpaceException extends StoreException {
 
 /// Unmet dependencies / broken packages.
 final class DependencyException extends StoreException {
-  const DependencyException({required this.debugDetail, this.details = const [], this.backendId});
+  const DependencyException({
+    required this.debugDetail,
+    this.details = const [],
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -103,7 +119,12 @@ final class DependencyException extends StoreException {
 
 /// Checksum / signature mismatch.
 final class VerificationException extends StoreException {
-  const VerificationException({required this.debugDetail, this.expected, this.actual, this.backendId});
+  const VerificationException({
+    required this.debugDetail,
+    this.expected,
+    this.actual,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -120,7 +141,10 @@ final class VerificationException extends StoreException {
 
 /// Backend died mid-operation or isn't installed.
 final class BackendUnavailableException extends StoreException {
-  const BackendUnavailableException({required this.debugDetail, this.backendId});
+  const BackendUnavailableException({
+    required this.debugDetail,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -135,7 +159,11 @@ final class BackendUnavailableException extends StoreException {
 
 /// The vehicle/confinement can't reach the backend (our snap/flatpak story).
 final class PermissionException extends StoreException {
-  const PermissionException({required this.debugDetail, required this.neededAccess, this.backendId});
+  const PermissionException({
+    required this.debugDetail,
+    required this.neededAccess,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -201,7 +229,11 @@ final class InterruptedException extends StoreException {
 
 /// Stall watchdog fired: no progress events for too long.
 final class TimeoutException extends StoreException {
-  const TimeoutException({required this.debugDetail, this.stalledPhase, this.backendId});
+  const TimeoutException({
+    required this.debugDetail,
+    required this.stalledPhase,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;
@@ -218,7 +250,11 @@ final class TimeoutException extends StoreException {
 /// Catch-all. A bug-report generator, not a user message.
 /// [rawOutput] goes to the bug report, never to the UI.
 final class UnknownStoreException extends StoreException {
-  const UnknownStoreException({required this.debugDetail, this.rawOutput, this.backendId});
+  const UnknownStoreException({
+    required this.debugDetail,
+    this.rawOutput,
+    this.backendId,
+  });
 
   @override
   final String debugDetail;

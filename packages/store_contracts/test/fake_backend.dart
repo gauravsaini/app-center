@@ -7,13 +7,13 @@ import 'dart:async';
 import 'package:store_contracts/store_contracts.dart';
 
 AppInfo _fakeApp(String nativeId, String name) => AppInfo(
-      identity: AppIdentity(backendId: 'fake', nativeId: nativeId),
-      name: name,
-      summary: 'A fake app for the contract exam.',
-      iconUrl: '',
-      source: AppSource.unknown,
-      version: '1.0',
-    );
+  identity: AppIdentity(backendId: 'fake', nativeId: nativeId),
+  name: name,
+  summary: 'A fake app for the contract exam.',
+  iconUrl: '',
+  source: AppSource.unknown,
+  version: '1.0',
+);
 
 class FakeStoreBackend extends StoreBackend {
   /// When true, install() drives to Failed(NetworkException).
@@ -27,12 +27,12 @@ class FakeStoreBackend extends StoreBackend {
 
   @override
   Set<BackendCapability> get capabilities => {
-        BackendCapability.search,
-        BackendCapability.details,
-        BackendCapability.install,
-        BackendCapability.remove,
-        BackendCapability.update,
-      };
+    BackendCapability.search,
+    BackendCapability.details,
+    BackendCapability.install,
+    BackendCapability.remove,
+    BackendCapability.update,
+  };
 
   @override
   Future<bool> isAvailable() async => true;
@@ -47,11 +47,14 @@ class FakeStoreBackend extends StoreBackend {
   Future<AppDetails> getDetails(AppIdentity id) async {
     if (id.nativeId == 'no.such.App') {
       throw AppNotFoundException(
-          debugDetail: 'fake backend has no ${id.nativeId}',
-          backendId: 'fake');
+        debugDetail: 'fake backend has no ${id.nativeId}',
+        backendId: 'fake',
+      );
     }
     return AppDetails(
-        app: _fakeApp(id.nativeId, id.nativeId), description: 'Fake details.');
+      app: _fakeApp(id.nativeId, id.nativeId),
+      description: 'Fake details.',
+    );
   }
 
   @override
@@ -72,8 +75,11 @@ class FakeStoreBackend extends StoreBackend {
           Preparing(),
           Downloading(bytesDone: 10, bytesTotal: 100),
           Failed(
-              error: NetworkException(
-                  debugDetail: 'fake network failure', backendId: 'fake')),
+            error: NetworkException(
+              debugDetail: 'fake network failure',
+              backendId: 'fake',
+            ),
+          ),
         ],
       );
     }
@@ -81,8 +87,7 @@ class FakeStoreBackend extends StoreBackend {
   }
 
   @override
-  Future<OperationHandle> remove(AppIdentity id) =>
-      install(id); // shape is identical for the exam
+  Future<OperationHandle> remove(AppIdentity id) => install(id); // shape is identical for the exam
 
   @override
   Future<OperationHandle> update(AppIdentity id) => install(id);
@@ -99,17 +104,18 @@ class _FakeHandle implements OperationHandle {
     required this.app,
     required this.kind,
     List<OperationState>? script,
-  })  : _script = script ??
-            const [
-              Preparing(),
-              Downloading(bytesDone: 0, bytesTotal: 100),
-              Downloading(bytesDone: 50, bytesTotal: 100),
-              Downloading(bytesDone: 100, bytesTotal: 100),
-              Applying(fraction: 0.5),
-              Applying(fraction: 1.0),
-              Done(result: OperationResult(installedVersion: '1.0')),
-            ],
-        _current = const Queued(position: 0) {
+  }) : _script =
+           script ??
+           const [
+             Preparing(),
+             Downloading(bytesDone: 0, bytesTotal: 100),
+             Downloading(bytesDone: 50, bytesTotal: 100),
+             Downloading(bytesDone: 100, bytesTotal: 100),
+             Applying(fraction: 0.5),
+             Applying(fraction: 1.0),
+             Done(result: OperationResult(installedVersion: '1.0')),
+           ],
+       _current = const Queued(position: 0) {
     unawaited(_run());
   }
 
@@ -156,10 +162,14 @@ class _FakeHandle implements OperationHandle {
     }
     // Script exhausted without terminal — a backend bug; fail loudly.
     if (!_current.isTerminal) {
-      _emit(const Failed(
+      _emit(
+        const Failed(
           error: UnknownStoreException(
-              debugDetail: 'fake script exhausted without terminal state',
-              backendId: 'fake')));
+            debugDetail: 'fake script exhausted without terminal state',
+            backendId: 'fake',
+          ),
+        ),
+      );
     }
     await _controller.close();
   }

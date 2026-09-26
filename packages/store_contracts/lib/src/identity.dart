@@ -35,7 +35,11 @@ enum AppSource { snap, deb, flatpak, appImage, unknown }
 /// A sandbox permission, shown BEFORE install (ADR-009: trust is designed,
 /// not documented). Empty list = backend cannot report permissions.
 class Permission {
-  const Permission({required this.id, required this.label, this.granted = true});
+  const Permission({
+    required this.id,
+    required this.label,
+    this.granted = true,
+  });
 
   /// Stable id, e.g. 'network', 'home-read', 'camera'.
   final String id;

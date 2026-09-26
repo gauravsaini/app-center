@@ -10,12 +10,18 @@ void main() {
       await runContractExam(
         'fake',
         FakeStoreBackend.new,
-        installTarget:
-            const AppIdentity(backendId: 'fake', nativeId: 'org.fake.App'),
-        unknownTarget:
-            const AppIdentity(backendId: 'fake', nativeId: 'no.such.App'),
-        installedTarget:
-            const AppIdentity(backendId: 'fake', nativeId: 'org.fake.Installed'),
+        installTarget: const AppIdentity(
+          backendId: 'fake',
+          nativeId: 'org.fake.App',
+        ),
+        unknownTarget: const AppIdentity(
+          backendId: 'fake',
+          nativeId: 'no.such.App',
+        ),
+        installedTarget: const AppIdentity(
+          backendId: 'fake',
+          nativeId: 'org.fake.Installed',
+        ),
       );
     });
 
@@ -26,10 +32,14 @@ void main() {
         runContractExam(
           'fake-broken',
           _BrokenBackend.new,
-          installTarget:
-              const AppIdentity(backendId: 'fake', nativeId: 'org.fake.App'),
-          unknownTarget:
-              const AppIdentity(backendId: 'fake', nativeId: 'no.such.App'),
+          installTarget: const AppIdentity(
+            backendId: 'fake',
+            nativeId: 'org.fake.App',
+          ),
+          unknownTarget: const AppIdentity(
+            backendId: 'fake',
+            nativeId: 'no.such.App',
+          ),
         ),
         throwsA(isA<ExamFailure>()),
       );
@@ -61,7 +71,8 @@ class _BrokenHandle implements OperationHandle {
 
   @override
   Stream<OperationState> get state => Stream.value(
-      const Done(result: OperationResult(installedVersion: '1.0')));
+    const Done(result: OperationResult(installedVersion: '1.0')),
+  );
 
   @override
   Future<void> cancel() async {}

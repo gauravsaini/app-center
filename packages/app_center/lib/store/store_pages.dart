@@ -5,7 +5,6 @@ import 'package:app_center/l10n.dart';
 import 'package:app_center/manage/local_deb_updates_model.dart';
 import 'package:app_center/manage/manage.dart';
 import 'package:app_center/manage/snap_updates_model.dart';
-import 'package:app_center/manage/unified_updates_provider.dart';
 import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/snapd.dart';
 import 'package:app_center/store/store_host_wiring.dart';

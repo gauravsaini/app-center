@@ -1,0 +1,15 @@
+name: backend_appimage
+description: AppImage backend for the unified *nix store — file-based transport implementing the store_contracts law (ADR-006). Content-addressed identity (sha256); integrate/remove managed AppImages, no daemon.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+
+dependencies:
+  crypto: ^3.0.0
+  store_contracts:
+    path: ../store_contracts
+
+dev_dependencies:
+  test: ^1.25.0

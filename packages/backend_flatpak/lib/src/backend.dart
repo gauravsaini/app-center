@@ -258,12 +258,76 @@ class BackendFlatpak extends StoreBackend {
 
   @override
   Future<List<UpdateInfo>> checkUpdates() async {
-    // v1: not wired. `flatpak update` has no stable machine-readable
-    // dry-run across versions; updates surface via update() on demand.
-    // TODO(backend-flatpak): wire update discovery when the CLI offers
-    // a stable interface.
-    return const [];
+    // Two CLI round-trips, no N+1:
+    // 1. `list --app` -> installed version map (UpdateInfo.fromVersion).
+    // 2. `remote-ls --updates` on the configured remote -> the refs that
+    //    have a newer version available (UpdateInfo.toVersion).
+    //
+    // `remote-ls --updates` is the only stable update-discovery
+    // interface the CLI offers; there is no machine-readable dry-run
+    // for `flatpak update`. The `--app` filter keeps runtimes out of
+    // the updates surface (v1: the store shows app updates; runtime
+    // updates ride along with explicit update() calls).
+    final installedByAppId = <String, AppInfo>{};
+    try {
+      // Same column layout as listInstalled(): the shared heuristic
+      // parser applies, and only nativeId/installedVersion are read.
+      for (final line in await transport.run([
+        'list',
+        '--app',
+        '--columns=application,name,version',
+      ])) {
+        final app = _parseInstalledLine(line);
+        if (app != null) {
+          installedByAppId[app.identity.nativeId] = app;
+        }
+      }
+    } on FlatpakCommandException catch (e) {
+      if (_isMissingBinary(e)) return const [];
+      throw _mapError(e);
+    }
+    late final List<String> updateLines;
+    try {
+      updateLines = await transport.run([
+        'remote-ls',
+        '--updates',
+        '--app',
+        '--columns=application,name,version',
+        remote,
+      ]);
+    } on FlatpakCommandException catch (e) {
+      if (_isMissingBinary(e)) return const [];
+      throw _mapError(e);
+    }
+    // The update rows share the application,name,version column layout
+    // with `flatpak list`, so the same heuristic parser applies. The
+    // parsed `installedVersion` field is ignored here — only the id,
+    // name, and (new) version are read.
+    final updates = <UpdateInfo>[];
+    for (final line in updateLines) {
+      final row = _parseInstalledLine(line);
+      if (row == null) continue;
+      final newVersion = row.version;
+      updates.add(
+        UpdateInfo(
+          identity: AppIdentity(backendId: id, nativeId: row.identity.nativeId),
+          name: row.name,
+          fromVersion:
+              installedByAppId[row.identity.nativeId]?.installedVersion,
+          toVersion: newVersion == null || newVersion.isEmpty
+              ? null
+              : newVersion,
+        ),
+      );
+    }
+    return updates;
   }
+
+  /// True when the failure means "flatpak is not installed". A missing
+  /// backend is a normal runtime condition (ADR-010), never an error —
+  /// callers degrade to "no updates" instead of throwing.
+  bool _isMissingBinary(FlatpakCommandException e) =>
+      e.exitCode == 127 || e.stderr.toLowerCase().contains('command not found');
 
   @override
   Future<List<AppInfo>> listInstalled() async {

@@ -17,107 +17,83 @@ import 'test_utils.dart';
 void main() {
   tearDown(resetAllServices);
 
-  /// One exception per taxonomy code. Each carries a distinctive
-  /// debug-only marker that must never appear in the UI string.
-  List<StoreException> taxonomy() => const [
-    NetworkException(debugDetail: 'net-debug-marker'),
-    AuthException(debugDetail: 'auth-denied-debug-marker'),
-    AuthException(
-      debugDetail: 'auth-dismissed-debug-marker',
-      kind: AuthKind.dismissed,
-    ),
-    AuthException(
-      debugDetail: 'auth-expired-debug-marker',
-      kind: AuthKind.expired,
-    ),
-    DiskSpaceException(
-      debugDetail: 'disk-debug-marker',
-      neededBytes: 100,
-      availableBytes: 1,
-    ),
-    DependencyException(debugDetail: 'dep-debug-marker'),
-    VerificationException(debugDetail: 'verify-debug-marker'),
-    BackendUnavailableException(debugDetail: 'backend-debug-marker'),
-    PermissionException(
-      debugDetail: 'confinement-debug-marker',
-      neededAccess: 'host flatpak',
-    ),
-    AppNotFoundException(debugDetail: 'notfound-debug-marker'),
-    ConflictException(debugDetail: 'conflict-debug-marker'),
-    InterruptedException(debugDetail: 'interrupted-debug-marker'),
-    TimeoutException(
-      debugDetail: 'timeout-debug-marker',
-      stalledPhase: 'Applying',
-    ),
-    UnknownStoreException(
-      debugDetail: 'unknown-debug-marker',
-      rawOutput: 'raw-output-marker',
-    ),
-  ];
-
-  /// Pinned code → l10n getter contract.
+  /// One exception per taxonomy code, pinned to its l10n key. Each
+  /// carries a distinctive debug-only marker that must never appear in
+  /// the UI string.
   List<(StoreException, String Function(AppLocalizations))> mapping() => [
     (
-      const NetworkException(debugDetail: 'x'),
+      const NetworkException(debugDetail: 'net-debug-marker'),
       (l) => l.operationFailureNetwork,
     ),
     (
-      const AuthException(debugDetail: 'x'),
+      const AuthException(debugDetail: 'auth-denied-debug-marker'),
       (l) => l.operationFailureAuthDenied,
     ),
     (
-      const AuthException(debugDetail: 'x', kind: AuthKind.dismissed),
+      const AuthException(
+        debugDetail: 'auth-dismissed-debug-marker',
+        kind: AuthKind.dismissed,
+      ),
       (l) => l.operationFailureAuthDismissed,
     ),
     (
-      const AuthException(debugDetail: 'x', kind: AuthKind.expired),
+      const AuthException(
+        debugDetail: 'auth-expired-debug-marker',
+        kind: AuthKind.expired,
+      ),
       (l) => l.operationFailureAuthExpired,
     ),
     (
       const DiskSpaceException(
-        debugDetail: 'x',
+        debugDetail: 'disk-debug-marker',
         neededBytes: 1,
         availableBytes: 0,
       ),
       (l) => l.operationFailureDiskFull,
     ),
     (
-      const DependencyException(debugDetail: 'x'),
+      const DependencyException(debugDetail: 'dep-debug-marker'),
       (l) => l.operationFailureDependency,
     ),
     (
-      const VerificationException(debugDetail: 'x'),
+      const VerificationException(debugDetail: 'verify-debug-marker'),
       (l) => l.operationFailureVerification,
     ),
     (
-      const BackendUnavailableException(debugDetail: 'x'),
+      const BackendUnavailableException(debugDetail: 'backend-debug-marker'),
       (l) => l.operationFailureBackendUnavailable,
     ),
     (
       const PermissionException(
-        debugDetail: 'x',
+        debugDetail: 'confinement-debug-marker',
         neededAccess: 'y',
       ),
       (l) => l.operationFailureConfinement,
     ),
     (
-      const AppNotFoundException(debugDetail: 'x'),
+      const AppNotFoundException(debugDetail: 'notfound-debug-marker'),
       (l) => l.operationFailureNotFound,
     ),
     (
-      const ConflictException(debugDetail: 'x'),
+      const ConflictException(debugDetail: 'conflict-debug-marker'),
       (l) => l.operationFailureConflict,
     ),
     (
-      const InterruptedException(debugDetail: 'x'),
+      const InterruptedException(debugDetail: 'interrupted-debug-marker'),
       (l) => l.operationFailureInterrupted,
     ),
     (
-      const TimeoutException(debugDetail: 'x', stalledPhase: 'Applying'),
+      const TimeoutException(
+        debugDetail: 'timeout-debug-marker',
+        stalledPhase: 'Applying',
+      ),
       (l) => l.operationFailureTimeout,
     ),
     (
-      const UnknownStoreException(debugDetail: 'x'),
+      const UnknownStoreException(
+        debugDetail: 'unknown-debug-marker',
+        rawOutput: 'raw-output-marker',
+      ),
       (l) => l.operationFailureUnknown,
     ),
   ];
@@ -127,50 +103,20 @@ void main() {
     return tester.l10n;
   }
 
-  testWidgets('every taxonomy code maps to a non-empty localized string', (
-    tester,
-  ) async {
-    final l10n = await pumpL10n(tester);
-    for (final e in taxonomy()) {
-      final reason = operationFailureReason(e, l10n);
-      expect(reason, isNotEmpty, reason: 'code ${e.code}');
-    }
-  });
-
-  testWidgets('codes map to their exact l10n keys', (tester) async {
+  testWidgets('codes map to their exact non-empty l10n keys', (tester) async {
     final l10n = await pumpL10n(tester);
     for (final (e, getter) in mapping()) {
-      expect(
-        operationFailureReason(e, l10n),
-        getter(l10n),
-        reason: 'code ${e.code}',
-      );
+      final reason = operationFailureReason(e, l10n);
+      expect(reason, isNotEmpty, reason: 'code ${e.code} empty');
+      expect(reason, getter(l10n), reason: 'code ${e.code}');
     }
-  });
-
-  testWidgets('an unrecognized code falls through to the unknown message', (
-    tester,
-  ) async {
-    final l10n = await pumpL10n(tester);
-    // 'unknown' is deliberately absent from the switch cases: the
-    // catch-all exception exercises the `_` fall-through branch, the
-    // same branch a future subtype with a new code would hit. (A
-    // test-only StoreException subtype is impossible: the class is
-    // sealed.)
-    expect(
-      operationFailureReason(
-        const UnknownStoreException(debugDetail: 'weird'),
-        l10n,
-      ),
-      l10n.operationFailureUnknown,
-    );
   });
 
   testWidgets('debugDetail and rawOutput never appear in any output', (
     tester,
   ) async {
     final l10n = await pumpL10n(tester);
-    for (final e in taxonomy()) {
+    for (final (e, _) in mapping()) {
       final reason = operationFailureReason(e, l10n);
       expect(
         reason,

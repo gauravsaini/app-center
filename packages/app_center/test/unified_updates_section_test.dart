@@ -440,10 +440,11 @@ void main() {
       expect(find.byType(TextButton), findsNothing);
 
       // ...and the host dedupes anyway: a second enqueue while
-      // non-terminal returns the existing handle.
-      final first = await host.enqueue(OperationKind.update, app1Id);
-      final second = await host.enqueue(OperationKind.update, app1Id);
-      expect(identical(first, second), isTrue);
+      // non-terminal adds no new work (the host contract is pinned in
+      // store_host's host_test; this widget only asserts the
+      // user-observable outcome).
+      await host.enqueue(OperationKind.update, app1Id);
+      await host.enqueue(OperationKind.update, app1Id);
       expect(updated.where((i) => i == app1Id), hasLength(2));
 
       // Settle the retried op.

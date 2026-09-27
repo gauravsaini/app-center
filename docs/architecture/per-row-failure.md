@@ -420,7 +420,9 @@ overrides):
   override → retry affordance replaced by in-flight controls; a second
   tap is impossible and `enqueue` stays at 1 call (no double-enqueue).
 - retry tap with `enqueue` throwing `BackendUnavailableException` →
-  row shows the backend-unavailable reason + retry still enabled.
+  row shows the backend-unavailable reason with NO retry button
+  (HLD §3: `fixBackend` remediation → reason only; a retry whose
+  backend is gone cannot succeed, so the button stays off).
 - `Failed(TimeoutException(debugDetail: '…', stalledPhase: 'Applying'))`
   → stalled reason + retry (watchdog path).
 - `Failed(AuthException(…denied…))` → quiet neutral note, no retry

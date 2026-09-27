@@ -57,6 +57,26 @@ final identityEnabledProvider = Provider<bool>(
   name: 'identityEnabledProvider',
 );
 
+/// Kill switch for Phase 3 community app metadata
+/// (docs/architecture/phase3-slice5.md §4).
+///
+/// True only when BOTH `phase3.identity.enabled` and
+/// `phase3.metadata.enabled` are on — metadata keys off canonical ids,
+/// so the identity flag gates everything: identity off means no
+/// community metadata is ever shown, even with a verified file on
+/// disk. Reads the identity flag through [identityEnabledProvider]
+/// (not the flag map directly) so the settings toggle's invalidation
+/// cascades here. The details page's community sections (description
+/// override, community screenshots, curated permissions, rating)
+/// render only when this is true AND the page's app carries a
+/// canonical id AND the host returned a verified entry.
+final metadataEnabledProvider = Provider<bool>(
+  (ref) =>
+      ref.watch(identityEnabledProvider) &&
+      ref.watch(storeFlagsProvider).isEnabled('phase3.metadata.enabled'),
+  name: 'metadataEnabledProvider',
+);
+
 /// Builds the app-wide [StoreHost] with every backend registered.
 ///
 /// Detect → seed → construct → register: [detectPlatform] runs first

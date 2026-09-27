@@ -96,6 +96,15 @@ class _UnifiedDetailsPageState extends ConsumerState<UnifiedDetailsPage> {
   Widget build(BuildContext context) {
     final details = ref.watch(unifiedAppDetailsProvider(_selected));
     final merged = _merged;
+    // Phase 3 slice 5: the community metadata sections render only when
+    // the flag pair is on AND this page's app resolved to a canonical
+    // id AND the host returned a verified entry. Otherwise the provider
+    // is not even watched — no fetch — and the page is today's page bit
+    // for bit (phase3-slice5.md §3.3).
+    final canonicalId = widget.app?.canonicalId;
+    final community = ref.watch(metadataEnabledProvider) && canonicalId != null
+        ? ref.watch(communityMetadataProvider(canonicalId))
+        : null;
     return ResponsiveLayoutBuilder(
       builder: (context) {
         final layout = ResponsiveLayout.of(context);
@@ -127,7 +136,10 @@ class _UnifiedDetailsPageState extends ConsumerState<UnifiedDetailsPage> {
                   ],
                   const SizedBox(height: kPagePadding),
                   details.when(
-                    data: (d) => _DetailsBody(details: d),
+                    data: (d) => _DetailsBody(
+                      details: d,
+                      metadata: community?.valueOrNull,
+                    ),
                     loading: () => const Center(
                       child: YaruCircularProgressIndicator(),
                     ),
@@ -322,14 +334,71 @@ class _VariantSwitcher extends StatelessWidget {
   }
 }
 
+/// Details body: backend data first, community metadata second — never
+/// interleaved (phase3-slice5.md §3.1).
+///
+/// Section order is deliberate: (1) backend ADR-009 permissions,
+/// unchanged and first; (2) install button, unchanged; (3) description
+/// — the community description wins over the backend's when present,
+/// under a small "Community-curated" tag (the header summary stays
+/// backend data); (4) screenshots — community first with captions,
+/// then backend extras deduped by URL; (5) community permissions block
+/// ("Community-curated permissions"), after the install button, never
+/// in the ADR-009 position — absent block renders nothing, no empty
+/// state; (6) community rating ("4.3 · 128 community ratings"), labeled
+/// by source, side-by-side with the backend rating display (unchanged);
+/// (7) license/homepage meta rows, unchanged.
+///
+/// [metadata] is null unless the flag pair is on, the app has a
+/// canonical id, and the host returned a verified entry — null means
+/// today's page bit for bit.
 class _DetailsBody extends StatelessWidget {
-  const _DetailsBody({required this.details});
+  const _DetailsBody({required this.details, this.metadata});
 
   final AppDetails details;
+  final CommunityAppMetadata? metadata;
+
+  /// Screenshot union, community first: community shots (with
+  /// captions), then backend extras deduped by URL, backend order
+  /// preserved.
+  List<({String url, String? caption})> _screenshotEntries() {
+    final seen = <String>{};
+    final entries = <({String url, String? caption})>[];
+    // The element type is host-internal; the UI reads it through
+    // [CommunityAppMetadata] without naming the type. Hoisted to a
+    // local first: `?? const []` on the nullable field confuses the
+    // inferred element type (it degrades to dynamic, which
+    // strict-casts rejects).
+    final communityShots = metadata?.screenshots;
+    if (communityShots != null) {
+      for (final shot in communityShots) {
+        if (seen.add(shot.url)) {
+          entries.add((url: shot.url, caption: shot.caption));
+        }
+      }
+    }
+    for (final url in details.screenshots) {
+      if (seen.add(url)) entries.add((url: url, caption: null));
+    }
+    return entries;
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final metadata = this.metadata;
+    // The community description wins when present (labeled). The host
+    // parses empty strings to null (absent); isNotEmpty is
+    // belt-and-braces. The header summary stays backend data —
+    // identity-critical, not editorial.
+    final communityDescription = metadata?.description;
+    final showCommunityDescription =
+        communityDescription != null && communityDescription.isNotEmpty;
+    final shots = _screenshotEntries();
+    // Host-internal types again: read through the metadata record,
+    // pass only nameable values (String/double/int) down.
+    final communityPermissions = metadata?.permissions;
+    final communityRating = metadata?.rating;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -350,20 +419,62 @@ class _DetailsBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: kPagePadding),
-        Text(
-          l10n.unifiedDetailsDescriptionLabel,
-          style: Theme.of(context).textTheme.titleMedium,
+        Row(
+          children: [
+            Text(
+              l10n.unifiedDetailsDescriptionLabel,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            if (showCommunityDescription) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).dividerColor),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  l10n.communityMetadataCuratedTag,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: 8),
-        Text(details.description),
-        if (details.screenshots.isNotEmpty) ...[
+        // Plain Text only — no markdown, no auto-links (§5: community
+        // text is data, never code).
+        Text(
+          showCommunityDescription ? communityDescription : details.description,
+        ),
+        if (shots.isNotEmpty) ...[
           const SizedBox(height: kPagePadding),
           Text(
             l10n.unifiedDetailsScreenshotsLabel,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
-          _Screenshots(urls: details.screenshots),
+          _Screenshots(
+            urls: [for (final shot in shots) shot.url],
+            captions: [for (final shot in shots) shot.caption],
+          ),
+        ],
+        if (communityPermissions != null) ...[
+          const SizedBox(height: kPagePadding),
+          _CommunityPermissions(
+            sandboxingName: communityPermissions.sandboxing.name,
+            capabilities: communityPermissions.capabilities,
+          ),
+        ],
+        if (communityRating != null) ...[
+          const SizedBox(height: kPagePadding),
+          _CommunityRating(
+            mean: communityRating.mean,
+            count: communityRating.count,
+          ),
         ],
         if (details.license != null || details.homepage != null) ...[
           const SizedBox(height: kPagePadding),
@@ -413,31 +524,146 @@ class _PermissionsList extends StatelessWidget {
 }
 
 class _Screenshots extends StatelessWidget {
-  const _Screenshots({required this.urls});
+  const _Screenshots({required this.urls, this.captions});
 
   final List<String> urls;
 
+  /// Parallel to [urls]: the community caption for a community shot,
+  /// null for backend shots. A null/empty caption renders today's tile
+  /// bit for bit; a caption adds one plain-Text line under the tile
+  /// (plain text only — no markdown, no auto-links).
+  final List<String?>? captions;
+
   @override
   Widget build(BuildContext context) {
+    final hasCaptions =
+        captions != null && captions!.any((c) => c != null && c.isNotEmpty);
     return SizedBox(
-      height: 180,
+      // Captioned tiles need room for the caption line; uncaptioned
+      // galleries keep today's height bit for bit.
+      height: hasCaptions ? 224 : 180,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: urls.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) => ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            urls[i],
-            height: 180,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const SizedBox(
-              width: 120,
-              child: Center(child: Icon(YaruIcons.image_missing, size: 32)),
+        itemBuilder: (context, i) {
+          final caption = captions != null && i < captions!.length
+              ? captions![i]
+              : null;
+          // The existing loading/error builders are reused: a dead
+          // community URL shows the same honest broken-image tile as a
+          // dead backend URL.
+          final tile = ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              urls[i],
+              height: 180,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox(
+                width: 120,
+                child: Center(child: Icon(YaruIcons.image_missing, size: 32)),
+              ),
             ),
-          ),
-        ),
+          );
+          if (caption == null || caption.isEmpty) return tile;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              tile,
+              const SizedBox(height: 4),
+              SizedBox(
+                width: 160,
+                child: Text(
+                  caption,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          );
+        },
       ),
+    );
+  }
+}
+
+/// Community-curated permissions (phase3-slice5.md §3.1).
+///
+/// Format-agnostic curated capability claims — what the upstream
+/// project legitimately needs, reviewed by curators. Rendered AFTER
+/// the install button, never in the ADR-009 pre-install position (the
+/// live backend list wins for trust decisions). Sandboxing line +
+/// capability chips, verbatim — capabilities are never invented.
+/// The sandboxing truth stays backend-reported at details time; this
+/// block is the curated claim, labeled as such.
+class _CommunityPermissions extends StatelessWidget {
+  const _CommunityPermissions({
+    required this.sandboxingName,
+    required this.capabilities,
+  });
+
+  /// `CommunitySandboxing.name`, read through [CommunityAppMetadata]
+  /// without naming the host-internal type.
+  final String sandboxingName;
+
+  /// Curated capability ids from the closed vocabulary, verbatim.
+  final List<String> capabilities;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final state = switch (sandboxingName) {
+      'sandboxed' => l10n.communityMetadataSandboxedLabel,
+      'unsandboxed' => l10n.communityMetadataUnsandboxedLabel,
+      _ => l10n.communityMetadataSandboxingUnknownLabel,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          l10n.communityMetadataPermissionsLabel,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(l10n.communityMetadataSandboxingLabel(state)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [for (final c in capabilities) Chip(label: Text(c))],
+        ),
+        const SizedBox(height: 8),
+        // Trust copy (§7): the live backend list above wins for trust
+        // decisions — curated claims are advisory. Plain Text, no links.
+        Text(
+          l10n.communityMetadataPermissionsNote,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+/// Community rating aggregate (phase3-slice5.md §1.2).
+///
+/// Read-only, curator-asserted, always with the count — no rating
+/// without a count, ever (ADR-005). Labeled by source; the backend
+/// `AppInfo.rating` display is untouched, side by side, never merged.
+class _CommunityRating extends StatelessWidget {
+  const _CommunityRating({required this.mean, required this.count});
+
+  final double mean;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Text(
+      // Shortest round-trip: 4.3 stays "4.3" — never reformatted.
+      l10n.communityMetadataRatingLabel('$mean', count),
+      style: Theme.of(context).textTheme.bodyLarge,
     );
   }
 }

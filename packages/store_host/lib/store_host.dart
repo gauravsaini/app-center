@@ -11,3 +11,4 @@ export 'src/check_updates_result.dart';
 export 'src/flags.dart';
 export 'src/host.dart';
 export 'src/installed_result.dart';
+export 'src/platform_detection.dart';

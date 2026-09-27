@@ -26,6 +26,16 @@ typedef TimerFactory =
 Timer _realTimerFactory(Duration duration, void Function() callback) =>
     Timer(duration, callback);
 
+/// One memoized `isAvailable()` result. The invalidation timer is armed
+/// from the host's injectable [TimerFactory] — the engine never reads
+/// the wall clock (same pattern as the stall watchdog).
+class _ProbeCacheEntry {
+  _ProbeCacheEntry(this.value, this.invalidate);
+
+  final bool value;
+  final Timer invalidate;
+}
+
 class StoreHost implements UnifiedCatalog, OperationEngine {
   StoreHost({required FeatureFlags flags, TimerFactory? timerFactory})
     : _flags = flags,
@@ -37,6 +47,10 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   final Map<String, OperationHandle> _inflight = {};
   final StreamController<List<OperationHandle>> _activeChanges =
       StreamController<List<OperationHandle>>.broadcast();
+
+  /// Memoized `isAvailable()` results per backend id
+  /// (docs/architecture/platform-detection.md §4).
+  final Map<String, _ProbeCacheEntry> _probeCache = {};
 
   /// Register a backend plugin. Called once at the composition root
   /// (the app's `main.dart`) — never from UI pages.
@@ -57,13 +71,46 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     final out = <StoreBackend>[];
     for (final b in _backends) {
       if (!_flags.isEnabled('backend.${b.id}.enabled')) continue;
-      try {
-        if (await b.isAvailable()) out.add(b);
-      } catch (_) {
-        // A throwing isAvailable() counts as unavailable.
-      }
+      // Flag-off backends bypass the probe (and the cache) entirely: a
+      // seeding change takes effect immediately, never waits out a TTL.
+      if (await _isAvailableCached(b)) out.add(b);
     }
     return out;
+  }
+
+  /// Memoized `isAvailable()` per backend id
+  /// (docs/architecture/platform-detection.md §4). The TTL comes from
+  /// the `host.probe_cache_ttl_ms` flag, read at call time; `<= 0`
+  /// disables caching entirely (every call probes). A throwing probe
+  /// still counts as unavailable.
+  ///
+  /// Why the semantics stay safe: a stale `true` only costs one failed
+  /// fetch (the fan-out degrades to partial as before); a stale
+  /// `false` excludes the backend for at most the TTL, then the next
+  /// call re-probes. Bounded, self-healing.
+  Future<bool> _isAvailableCached(StoreBackend backend) async {
+    final ttlMs = _flags.getInt('host.probe_cache_ttl_ms');
+    if (ttlMs <= 0) {
+      try {
+        return await backend.isAvailable();
+      } catch (_) {
+        return false;
+      }
+    }
+    final hit = _probeCache[backend.id];
+    if (hit != null) return hit.value;
+    bool value;
+    try {
+      value = await backend.isAvailable();
+    } catch (_) {
+      value = false;
+    }
+    final invalidate = _timerFactory(
+      Duration(milliseconds: ttlMs),
+      () => _probeCache.remove(backend.id),
+    );
+    _probeCache[backend.id] = _ProbeCacheEntry(value, invalidate);
+    return value;
   }
 
   @override
@@ -235,7 +282,9 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   }
 
   /// Shared race skeleton behind [_checkOneWithTimeout] and
-  /// [_installedOneWithTimeout]: `isAvailable()` + [fetch] raced against
+  /// [_installedOneWithTimeout]: `isAvailable()` (memoized per backend
+  /// id — [_isAvailableCached], a cache read is instant and a cache
+  /// miss re-probes under this same budget) + [fetch] raced against
   /// a single-shot timer from the host's injectable [TimerFactory]
   /// (never `Future.timeout` — zone timers aren't testable; the
   /// fake-factory pattern is the same as the stall watchdog).
@@ -259,7 +308,7 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     Timer? timer;
     unawaited(() async {
       try {
-        final available = await backend.isAvailable();
+        final available = await _isAvailableCached(backend);
         final items = available ? await fetch(backend) : <T>[];
         if (!done.isCompleted) {
           timer?.cancel();

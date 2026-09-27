@@ -174,9 +174,10 @@ void main() {
       expect(result.updates.map((u) => u.name), ['Healthy']);
       expect(result.partialBackendIds, ['hung']);
       expect(result.isPartial, isTrue);
-      // The orphan's timer was the only one armed; the healthy
-      // backend's timer was cancelled on completion.
-      expect(timers.pendingCount, 0);
+      // Both backends were probed (isAvailable() -> true), so each holds
+      // one probe-cache invalidation timer (platform-detection.md §4);
+      // the per-backend race timers are all gone (fired or cancelled).
+      expect(timers.pendingCount, 2);
     });
 
     test('checkUpdates() returns the partial list and never throws', () async {

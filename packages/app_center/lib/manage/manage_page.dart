@@ -11,6 +11,8 @@ import 'package:app_center/manage/manage_app_data.dart';
 import 'package:app_center/manage/manage_app_tile.dart';
 import 'package:app_center/manage/snap_updates_model.dart';
 import 'package:app_center/manage/unified_manage_page.dart';
+import 'package:app_center/manage/unified_updates_manage_page.dart';
+import 'package:app_center/manage/unified_updates_section.dart';
 import 'package:app_center/snapd/currently_installing_model.dart';
 import 'package:app_center/store/store_host_wiring.dart';
 import 'package:flutter/material.dart';
@@ -27,19 +29,40 @@ class ManagePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final flags = ref.watch(storeFlagsProvider);
+    // Strangler-fig slice (updates): when `pages.updates.unified` is on,
+    // the updates surface (updates section + update-all) reads from
+    // StoreHost via unifiedUpdatesProvider instead of the legacy
+    // snap/deb update models. Flag off (the default) keeps the legacy
+    // updates sections below exactly as-is.
+    final updatesUnified = flags.isEnabled('pages.updates.unified');
     // Strangler-fig slice: when `pages.manage.unified` is on, the Manage
     // page sources its installed list from StoreHost instead of snapd /
     // PackageKit directly. Flag off (the default) keeps the legacy page
     // below exactly as-is.
-    if (ref.watch(storeFlagsProvider).isEnabled('pages.manage.unified')) {
-      return const UnifiedManagePage();
+    if (flags.isEnabled('pages.manage.unified')) {
+      return updatesUnified
+          ? const UnifiedUpdatesManagePage()
+          : const UnifiedManagePage();
     }
+    return updatesUnified
+        ? const _ManagePageWithUnifiedUpdates()
+        : const _LegacyManagePage();
+  }
+}
 
+/// The legacy Manage page: updates sections driven by the snap/deb
+/// update models, installed list from snapd/PackageKit. Rendered
+/// output is byte-identical to the pre-strangle page; the flag router
+/// above keeps it the default.
+class _LegacyManagePage extends ConsumerWidget {
+  const _LegacyManagePage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final appUpdatesModel = ref.watch(appUpdatesProvider);
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final currentlyInstalling = ref.watch(currentlyInstallingModelProvider);
-    final currentlyInstallingNames = currentlyInstalling.keys.toList();
 
     if (appUpdatesModel.hasError) {
       return ErrorView(
@@ -140,82 +163,137 @@ class ManagePage extends ConsumerWidget {
           ),
         ),
 
-        if (currentlyInstalling.isNotEmpty) ...[
-          SliverList.list(
-            children: [
-              const SizedBox(height: kSectionSpacing),
-              Text(
-                l10n.managePageInstallingLabel(1),
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: kMarginLarge),
-            ],
-          ),
-          SliverList.builder(
-            itemCount: currentlyInstalling.length,
-            itemBuilder: (context, index) => ManageAppTile(
-              app: ManageAppData.snap(
-                snap:
-                    currentlyInstalling[currentlyInstallingNames[index]]!.snap,
-              ),
-              position: determineTilePosition(
-                index: index,
-                length: currentlyInstalling.length,
-              ),
-            ),
-          ),
-        ],
-
-        SliverList.list(
-          children: [
-            const SizedBox(height: kSectionSpacing),
-            Text(
-              l10n.managePageInstalledAndUpdatedLabel,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: kSpacing),
-            _FilterRow(),
-            const SizedBox(height: kMarginLarge),
-          ],
-        ),
-
-        Consumer(
-          builder: (context, ref, child) {
-            final installedAppsModel = ref.watch(installedAppsProvider);
-            return installedAppsModel.when(
-              data: (apps) => SliverList.builder(
-                itemCount: apps.length,
-                itemBuilder: (context, index) => ManageAppTile(
-                  app: apps.elementAt(index),
-                  position: determineTilePosition(
-                    index: index,
-                    length: apps.length,
-                  ),
-                  hasFixedSize: true,
-                ),
-              ),
-              error: (_, __) =>
-                  const SliverToBoxAdapter(child: SizedBox.shrink()),
-              loading: () => const SliverToBoxAdapter(
-                child: Center(
-                  child: YaruCircularProgressIndicator(),
-                ),
-              ),
-            );
-          },
-        ),
-
-        // Bottom spacing
-        const SliverPadding(
-          padding: EdgeInsets.only(bottom: kPagePadding),
-        ),
+        ..._managePageTailSlivers(context, ref),
       ],
     );
   }
+}
+
+/// Manage page with the unified updates surface over the legacy
+/// installed list: `pages.updates.unified` on, `pages.manage.unified`
+/// off. The legacy updates header (update count + check/update-all
+/// actions) and updates list are replaced by [UnifiedUpdatesSection];
+/// everything below is the untouched legacy installed list.
+class _ManagePageWithUnifiedUpdates extends ConsumerWidget {
+  const _ManagePageWithUnifiedUpdates();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
+
+    return ResponsiveLayoutScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.only(top: kPagePadding),
+          sliver: SliverList.list(
+            children: [
+              Semantics(
+                header: true,
+                focused: true,
+                child: Text(
+                  l10n.managePageLabel,
+                  style: textTheme.headlineSmall,
+                ),
+              ),
+              _SelfUpdateInfoBox(),
+              const SizedBox(height: kMarginLarge),
+            ],
+          ),
+        ),
+
+        // Unified updates surface: replaces the legacy updates header,
+        // check/update-all action buttons, and the updates list.
+        const UnifiedUpdatesSection(),
+
+        ..._managePageTailSlivers(context, ref),
+      ],
+    );
+  }
+}
+
+/// The currently-installing + installed-list tail shared by the legacy
+/// page and the unified-updates variant. Both still list legacy
+/// installed apps here — the installed-list strangle is the
+/// `pages.manage.unified` slice, not this one.
+List<Widget> _managePageTailSlivers(BuildContext context, WidgetRef ref) {
+  final l10n = AppLocalizations.of(context);
+  final currentlyInstalling = ref.watch(currentlyInstallingModelProvider);
+  final currentlyInstallingNames = currentlyInstalling.keys.toList();
+
+  return [
+    if (currentlyInstalling.isNotEmpty) ...[
+      SliverList.list(
+        children: [
+          const SizedBox(height: kSectionSpacing),
+          Text(
+            l10n.managePageInstallingLabel(1),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: kMarginLarge),
+        ],
+      ),
+      SliverList.builder(
+        itemCount: currentlyInstalling.length,
+        itemBuilder: (context, index) => ManageAppTile(
+          app: ManageAppData.snap(
+            snap: currentlyInstalling[currentlyInstallingNames[index]]!.snap,
+          ),
+          position: determineTilePosition(
+            index: index,
+            length: currentlyInstalling.length,
+          ),
+        ),
+      ),
+    ],
+
+    SliverList.list(
+      children: [
+        const SizedBox(height: kSectionSpacing),
+        Text(
+          l10n.managePageInstalledAndUpdatedLabel,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: kSpacing),
+        _FilterRow(),
+        const SizedBox(height: kMarginLarge),
+      ],
+    ),
+
+    Consumer(
+      builder: (context, ref, child) {
+        final installedAppsModel = ref.watch(installedAppsProvider);
+        return installedAppsModel.when(
+          data: (apps) => SliverList.builder(
+            itemCount: apps.length,
+            itemBuilder: (context, index) => ManageAppTile(
+              app: apps.elementAt(index),
+              position: determineTilePosition(
+                index: index,
+                length: apps.length,
+              ),
+              hasFixedSize: true,
+            ),
+          ),
+          error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+          loading: () => const SliverToBoxAdapter(
+            child: Center(
+              child: YaruCircularProgressIndicator(),
+            ),
+          ),
+        );
+      },
+    ),
+
+    // Bottom spacing
+    const SliverPadding(
+      padding: EdgeInsets.only(bottom: kPagePadding),
+    ),
+  ];
 }
 
 class _ActionButtons extends ConsumerWidget {

@@ -34,6 +34,13 @@ class MapFeatureFlags implements FeatureFlags {
     // true → page reads StoreHost.installed(), false → legacy path.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'pages.manage.unified': false,
+    // Strangler switch for the updates surface (Manage page updates
+    // section, nav badge, update-all): true → reads
+    // unifiedUpdatesProvider (StoreHost.checkUpdates()), false →
+    // legacy update models (snapUpdatesModelProvider,
+    // localDebUpdatesModelProvider).
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'pages.updates.unified': false,
   };
 
   final Map<String, Object> _values;

@@ -7,6 +7,7 @@ import 'package:app_center/manage/manage.dart';
 import 'package:app_center/manage/snap_updates_model.dart';
 import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/snapd.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:yaru/yaru.dart';
@@ -109,6 +110,21 @@ final pages = <StorePage>[
       title: Text(ManagePage.label(context)),
       trailing: Consumer(
         builder: (context, ref, child) {
+          // Strangler-fig slice: when `pages.updates.unified` is on, the
+          // nav badge counts updates from StoreHost.checkUpdates() via
+          // unifiedUpdatesProvider. Flag off (the default) keeps the
+          // legacy snap/deb count below byte-identical.
+          if (ref
+              .watch(storeFlagsProvider)
+              .isEnabled('pages.updates.unified')) {
+            final updates = ref.watch(unifiedUpdatesProvider);
+            final count = updates.valueOrNull?.length ?? 0;
+
+            return count > 0
+                ? Badge(label: Text('$count'))
+                : const SizedBox.shrink();
+          }
+
           final snapUpdates = ref.watch(snapUpdatesModelProvider);
           final debUpdates = ref.watch(localDebUpdatesModelProvider);
 

@@ -1,15 +1,11 @@
-/// Unified Manage page (installed apps) for the manage-strangle slice.
+/// Manage page with both strangler flags on: the updates section and
+/// the installed list are both sourced from [StoreHost]
+/// (`pages.updates.unified` + `pages.manage.unified`).
 ///
-/// Rendered instead of the legacy Manage page when the
-/// `pages.manage.unified` flag is on.
-/// Lists the [UnifiedApp]s from [StoreHost.installed()] with one row per
-/// app: name, installed version, and a backend badge. Removal is driven
-/// through the host via [UnifiedInstallButton] (installed apps resolve
-/// to [OperationKind.remove]) — never backend services directly.
-///
-/// States: loading spinner, [ErrorView] with retry (the host itself
-/// never throws, but the provider can still fail above the host), and
-/// an empty state when no backend reports installed apps.
+/// Composes [UnifiedUpdatesSection] above the unified installed list.
+/// The installed-app tile mirrors [UnifiedManagePage]'s tile and is
+/// intentionally duplicated rather than shared: the two pages belong
+/// to different strangler slices and must not couple.
 ///
 /// No `backend_*` import by design: this file sees only the host, the
 /// contracts, and app_center internals.
@@ -19,19 +15,20 @@ import 'package:app_center/error/error.dart';
 import 'package:app_center/l10n.dart';
 import 'package:app_center/layout.dart';
 import 'package:app_center/manage/unified_installed_provider.dart';
+import 'package:app_center/manage/unified_manage_page.dart';
+import 'package:app_center/manage/unified_updates_section.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:store_host/store_host.dart';
 import 'package:yaru/yaru.dart';
 
-/// Installed-apps list sourced from the unified store.
+/// Manage page: unified updates section + unified installed list.
 ///
-/// Shown only when `pages.manage.unified` is on; the legacy Manage page
-/// stays the default until this view reaches parity (updates sections,
-/// local deb handling, filters — see the honest-gaps note on the slice).
-class UnifiedManagePage extends ConsumerWidget {
-  const UnifiedManagePage({super.key});
+/// Shown only when both `pages.updates.unified` and
+/// `pages.manage.unified` are on.
+class UnifiedUpdatesManagePage extends ConsumerWidget {
+  const UnifiedUpdatesManagePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,17 +50,27 @@ class UnifiedManagePage extends ConsumerWidget {
                   style: textTheme.headlineSmall,
                 ),
               ),
-              const SizedBox(height: kSpacing),
-              Text(
-                l10n.managePageInstalledAndUpdatedLabel,
-                style: textTheme.titleMedium!.copyWith(
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
               const SizedBox(height: kMarginLarge),
             ],
           ),
         ),
+
+        // Unified updates surface (replaces the legacy updates sections).
+        const UnifiedUpdatesSection(),
+
+        SliverList.list(
+          children: [
+            const SizedBox(height: kSectionSpacing),
+            Text(
+              l10n.managePageInstalledAndUpdatedLabel,
+              style: textTheme.titleMedium!.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: kMarginLarge),
+          ],
+        ),
+
         installed.when(
           data: (apps) => apps.isEmpty
               ? const SliverToBoxAdapter(child: _EmptyState())
@@ -72,12 +79,14 @@ class UnifiedManagePage extends ConsumerWidget {
                   itemBuilder: (context, index) =>
                       _InstalledAppTile(app: apps[index]),
                 ),
-          error: (error, stack) => IntrinsicHeight(
+          error: (error, stack) => SliverToBoxAdapter(
             // ErrorView's Spacers need bounded height; IntrinsicHeight
             // sizes it to its content inside the unbounded sliver.
-            child: ErrorView(
-              error: error,
-              onRetry: () => ref.invalidate(unifiedInstalledProvider),
+            child: IntrinsicHeight(
+              child: ErrorView(
+                error: error,
+                onRetry: () => ref.invalidate(unifiedInstalledProvider),
+              ),
             ),
           ),
           loading: () => const SliverToBoxAdapter(
@@ -96,6 +105,9 @@ class UnifiedManagePage extends ConsumerWidget {
 
 /// One installed app: backend badge, name + installed version, and the
 /// host-driven remove action.
+///
+/// Mirrors [UnifiedManagePage]'s tile; duplicated (not shared) so the
+/// updates slice never couples to the installed-apps slice.
 class _InstalledAppTile extends StatelessWidget {
   const _InstalledAppTile({required this.app});
 
@@ -145,8 +157,8 @@ class _InstalledAppTile extends StatelessWidget {
   }
 }
 
-/// Which backend owns the app. The UI never learns what a snap or a deb
-/// is — it only shows the backend's id as an opaque source label.
+/// Which backend owns the app. Opaque source label, same as the
+/// updates section's badge.
 class _BackendBadge extends StatelessWidget {
   const _BackendBadge({required this.backendId});
 

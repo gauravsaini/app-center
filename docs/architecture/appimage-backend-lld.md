@@ -50,7 +50,6 @@ abstract class AppImageTransport {
   Future<void> writeTextFile(String path, String content);
   Future<void> deleteFile(String path);                 // missing → ok
   Future<void> chmodX(String path);
-  Future<List<String>> runProcess(List<String> args, {String? workingDir});
 }
 ```
 

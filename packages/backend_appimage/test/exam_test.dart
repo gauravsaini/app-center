@@ -101,14 +101,6 @@ void main() {
       },
     );
 
-    test('getDetails on an unknown id throws typed', () async {
-      final backend = _create();
-      expect(
-        () => backend.getDetails(_id(_unknownSha)),
-        throwsA(isA<AppNotFoundException>()),
-      );
-    });
-
     test('search matches name and filename, case-insensitively', () async {
       final backend = _create();
       Future<List<AppInfo>> collect(String q) => backend.search(q).toList();

@@ -217,14 +217,6 @@ class StubAppimageTransport extends AppImageTransport {
     f.isExecutable = true;
   }
 
-  @override
-  Future<List<String>> runProcess(
-    List<String> args, {
-    String? workingDir,
-  }) async {
-    return const [];
-  }
-
   /// The canned `.desktop` the stub "extracts". `X-AppImage-Version`
   /// deliberately differs from the filename version (9.9.9 vs 1.2.3)
   /// so tests can prove the fallback chain's precedence.

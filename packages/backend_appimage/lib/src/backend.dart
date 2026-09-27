@@ -18,17 +18,6 @@ import 'identity.dart';
 import 'metadata.dart';
 import 'transport.dart';
 
-/// Scan roots, in order (research §2 — appimaged's monitored dirs).
-List<String> _scanDirs(String home) => [
-  '$home/Applications',
-  '$home/.local/bin',
-  '$home/bin',
-  '$home/Downloads',
-  '/opt',
-  '/usr/local/bin',
-  '/Applications',
-];
-
 /// Honest unsandboxed disclosure, prefixed to every description
 /// (AppImage is unsandboxed by design — LLD §6).
 const _unsandboxedDisclosure =
@@ -268,7 +257,9 @@ class BackendAppimage extends StoreBackend {
     handle.throwIfCancelled();
     final sha = entry.sha;
     final slug = slugify(entry.name);
-    final inPlace = _isWithin(entry.path, _applicationsDir);
+    final inPlace =
+        entry.path == _applicationsDir ||
+        entry.path.startsWith('$_applicationsDir/');
     final managedPath = inPlace
         ? entry.path
         : '$_applicationsDir/$slug.AppImage';
@@ -359,11 +350,14 @@ class BackendAppimage extends StoreBackend {
       await _deleteQuietly('$_iconDir/$sha.png');
       await _deleteQuietly('$_iconDir/$sha.svg');
     }
-    await _deleteQuietly('$_stateDir/$sha.json');
+    // The manifest is the record of what we own: it dies last, after
+    // the managed copy, so a cancel/crash between the two can never
+    // orphan a copy with no record of it.
     handle.throwIfCancelled();
     if (manifest != null && manifest.copied) {
       await _guarded(() => transport.deleteFile(manifest.managedPath));
     }
+    await _deleteQuietly('$_stateDir/$sha.json');
     return const OperationResult();
   }
 
@@ -389,16 +383,20 @@ class BackendAppimage extends StoreBackend {
     );
   }
 
-  Future<Map<String, String>?> _cachedDesktop(String sha) async {
+  /// Read and parse the desktop file at [path]; null on read/parse failure.
+  Future<Map<String, String>?> _readDesktopAt(String path) async {
     try {
-      final bytes = await transport.readHead('$_metaDir/$sha.desktop', 65536);
+      final bytes = await transport.readHead(path, 65536);
       return parseDesktopFile(utf8.decode(bytes));
     } on AppImageCommandException {
-      return null; // not cached — extract
+      return null;
     } on FormatException {
-      return null; // corrupt cache entry — re-extract
+      return null;
     }
   }
+
+  Future<Map<String, String>?> _cachedDesktop(String sha) =>
+      _readDesktopAt('$_metaDir/$sha.desktop');
 
   Future<Map<String, String>> _extractDesktop(IndexedApp entry) async {
     String? extracted;
@@ -414,11 +412,8 @@ class BackendAppimage extends StoreBackend {
         await transport.copyFile(extracted, target);
         await transport.deleteFile(extracted);
       }
-      final bytes = await transport.readHead(target, 65536);
-      return parseDesktopFile(utf8.decode(bytes));
+      return await _readDesktopAt(target) ?? const {};
     } on AppImageCommandException {
-      return const {};
-    } on FormatException {
       return const {};
     }
   }
@@ -478,7 +473,17 @@ class BackendAppimage extends StoreBackend {
   Future<void> _refreshIndex({bool Function()? isCancelled}) async {
     final next = <String, IndexedApp>{};
     final shaCache = <String, String>{};
-    for (final dir in _scanDirs(_home)) {
+    // Scan roots, in order (research §2 — appimaged's monitored dirs).
+    final roots = [
+      '$_home/Applications',
+      '$_home/.local/bin',
+      '$_home/bin',
+      '$_home/Downloads',
+      '/opt',
+      '/usr/local/bin',
+      '/Applications',
+    ];
+    for (final dir in roots) {
       if (isCancelled?.call() ?? false) break;
       late final List<DirEntry> entries;
       try {
@@ -497,7 +502,8 @@ class BackendAppimage extends StoreBackend {
           continue;
         }
         if (!isAppImageMagic(head)) continue;
-        final key = indexCacheKey(e.path, e.size, e.mtimeMs);
+        // Re-hash only when the file changed (path|size|mtime cache key).
+        final key = '${e.path}|${e.size}|${e.mtimeMs}';
         var sha = _shaCache[key] ?? shaCache[key];
         if (sha == null) {
           try {
@@ -560,9 +566,6 @@ class BackendAppimage extends StoreBackend {
       installedVersion: v ?? 'unknown',
     );
   }
-
-  bool _isWithin(String path, String dir) =>
-      path == dir || path.startsWith('$dir/');
 
   Future<T> _guarded<T>(Future<T> Function() op) async {
     try {

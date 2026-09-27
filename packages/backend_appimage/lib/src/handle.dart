@@ -2,7 +2,7 @@
 /// file-copy operations.
 ///
 /// The backend emits phase states through [emit] and observes
-/// cancellation via [throwIfCancelled]/[isCancellationRequested].
+/// cancellation via [throwIfCancelled].
 /// Cancellation always lands on [Cancelled] after best-effort cleanup —
 /// never a bare [Failed]. Follows the legal transition DAG in
 /// `store_contracts/lib/src/operation.dart`.
@@ -70,9 +70,6 @@ class AppimageOperationHandle implements OperationHandle {
   @override
   OperationState get current => _current;
 
-  /// True after [cancel] — the body must stop and clean up promptly.
-  bool get isCancellationRequested => _cancelRequested;
-
   /// Backend phases call this. Emits are ignored once terminal, and a
   /// [Cancelling] handle only accepts terminal states (the body must
   /// [throwIfCancelled] instead of advancing phases).
@@ -123,8 +120,8 @@ class AppimageOperationHandle implements OperationHandle {
     if (_current.isTerminal || _closed || _cancelRequested) return;
     _cancelRequested = true;
     emit(const Cancelling());
-    // The body observes the flag via throwIfCancelled() /
-    // isCancellationRequested and drives Cancelling → Cancelled
-    // (after deleting partial work) within the 2s spec budget.
+    // The body observes the flag via throwIfCancelled() and drives
+    // Cancelling → Cancelled (after deleting partial work) within the
+    // 2s spec budget.
   }
 }

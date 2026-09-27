@@ -31,10 +31,6 @@ class IndexedApp {
   final String? version;
 }
 
-/// Cache key for the sha256: re-hash a file only when it changed.
-String indexCacheKey(String path, int size, int mtimeMs) =>
-    '$path|$size|$mtimeMs';
-
 /// Lowercase-alnum slug for generated file names, truncated to 48 chars.
 /// Falls back to `'app'` when nothing alphanumeric survives.
 String slugify(String name) {

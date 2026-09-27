@@ -81,11 +81,6 @@ abstract class AppImageTransport {
   Future<void> deleteFile(String path);
 
   Future<void> chmodX(String path);
-
-  /// Run a short process, return trimmed non-empty stdout lines.
-  /// Throws [AppImageCommandException] on non-zero exit (127 when the
-  /// binary is missing).
-  Future<List<String>> runProcess(List<String> args, {String? workingDir});
 }
 
 /// Real transport: dart:io for files, the AppImage's own runtime flags
@@ -258,35 +253,6 @@ class RealAppImageTransport extends AppImageTransport {
   @override
   Future<void> chmodX(String path) => _chmod(path);
 
-  @override
-  Future<List<String>> runProcess(
-    List<String> args, {
-    String? workingDir,
-  }) async {
-    late final ProcessResult result;
-    try {
-      result = await Process.run(
-        args.first,
-        args.sublist(1),
-        workingDirectory: workingDir,
-      );
-    } on ProcessException catch (e) {
-      throw AppImageCommandException(args, 127, e.message);
-    }
-    if (result.exitCode != 0) {
-      throw AppImageCommandException(
-        args,
-        result.exitCode,
-        '${result.stderr}'.trim(),
-      );
-    }
-    return '${result.stdout}'
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-  }
-
   /// Materialize the squashfs payload into a fresh private temp dir.
   /// The caller owns [TempTree.dispose]. The user's original file is only
   /// ever *copied*; the copy alone is chmod'd and executed.
@@ -406,22 +372,19 @@ class RealAppImageTransport extends AppImageTransport {
   /// Payload-root `*.desktop` first, then `usr/share/applications/`.
   List<String> _findDesktops(String root) {
     final found = <String>[];
-    final top = Directory(root);
-    if (top.existsSync()) {
-      for (final e in top.listSync(followLinks: false)) {
+    // Priority order: payload root first, then usr/share/applications.
+    void collect(String dir) {
+      final d = Directory(dir);
+      if (!d.existsSync()) return;
+      for (final e in d.listSync(followLinks: false)) {
         if (e is File && e.path.toLowerCase().endsWith('.desktop')) {
           found.add(e.path);
         }
       }
     }
-    final apps = Directory('$root/usr/share/applications');
-    if (apps.existsSync()) {
-      for (final e in apps.listSync(followLinks: false)) {
-        if (e is File && e.path.toLowerCase().endsWith('.desktop')) {
-          found.add(e.path);
-        }
-      }
-    }
+
+    collect(root);
+    collect('$root/usr/share/applications');
     return found;
   }
 
@@ -491,10 +454,7 @@ class RealAppImageTransport extends AppImageTransport {
       try {
         final head = raf.readSync(8);
         return head.length == 8 &&
-            head[0] == 0x89 &&
-            head[1] == 0x50 &&
-            head[2] == 0x4E &&
-            head[3] == 0x47 &&
+            _isPng(head) &&
             head[4] == 0x0D &&
             head[5] == 0x0A &&
             head[6] == 0x1A &&

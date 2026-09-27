@@ -51,7 +51,7 @@ Tests script a stub; production uses `RealAppImageTransport`.
   extract when the binary exists, else copy → `chmod +x` the *copy* →
   `<copy> --appimage-extract` in `outDir`. Never chmod / never execute
   the user's original file.
-- `copyFile`, `writeTextFile`, `deleteFile`, `chmodX`, `runProcess`
+- `copyFile`, `writeTextFile`, `deleteFile`, `chmodX`
   — thin, typed-error wrappers.
 
 **AppImageIndex** (in-memory, per backend instance):

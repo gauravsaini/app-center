@@ -224,15 +224,25 @@ class BackendSnap extends StoreBackend {
 
   @override
   Future<List<AppInfo>> listInstalled() async {
+    try {
+      final snaps = await transport.installedSnaps();
+      return [for (final s in snaps) _installedAppInfo(s)];
+    } on SnapdTransportException {
+      // Bulk listing failed — degrade to the legacy per-snap path
+      // rather than failing the whole enumeration.
+      return _listInstalledLegacy();
+    }
+  }
+
+  /// Legacy N+1 enumeration: names, then one getDetails per name.
+  /// Kept as the fallback when the bulk `installedSnaps()` call fails.
+  Future<List<AppInfo>> _listInstalledLegacy() async {
     late final List<String> names;
     try {
       names = await transport.installedNames();
     } on SnapdTransportException catch (e) {
       throw _mapError(e);
     }
-    // N+1 getDetails is the honest MVP: the transport contract exposes
-    // only names, and installed sets are small. A bulk `installedSnaps()`
-    // transport call would collapse this to one round-trip.
     final apps = <AppInfo>[];
     for (final name in names) {
       late final SnapSummaryData s;

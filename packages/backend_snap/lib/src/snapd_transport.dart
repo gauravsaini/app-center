@@ -76,6 +76,16 @@ class PackageSnapdTransport extends SnapdTransport {
   }
 
   @override
+  Future<List<SnapSummaryData>> installedSnaps() async {
+    try {
+      final snaps = await _client.getSnaps();
+      return snaps.map(_toData).toList();
+    } catch (e) {
+      throw _wrap(e);
+    }
+  }
+
+  @override
   Future<List<SnapSummaryData>> updatesAvailable() async {
     try {
       final snaps = await _client.find(filter: SnapFindFilter.refresh);

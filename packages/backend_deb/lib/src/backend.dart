@@ -189,6 +189,54 @@ class BackendDeb extends StoreBackend {
   }
 
   @override
+  Future<List<AppInfo>> listInstalled() async {
+    late final List<String> names;
+    try {
+      names = await transport.installedNames();
+    } on PackageKitTransportException catch (e) {
+      throw _mapError(e);
+    }
+    // N+1 getDetails is the honest MVP: the transport contract exposes
+    // only names, and installed sets are small. A bulk
+    // `installedPackages()` transport call would collapse this to one
+    // transaction.
+    final apps = <AppInfo>[];
+    for (final name in names) {
+      late final DebPackageData p;
+      try {
+        p = await transport.getDetails(name);
+      } on PackageKitNotFoundException {
+        // Removed between installedNames() and getDetails(): skip the
+        // entry rather than failing the whole enumeration.
+        continue;
+      } on PackageKitTransportException catch (e) {
+        throw _mapError(e);
+      }
+      apps.add(_installedAppInfo(p));
+    }
+    return apps;
+  }
+
+  /// Maps a package known to be installed. The PackageKit getDetails
+  /// path resolves the installed package id (preferInstalled) but does
+  /// not populate installedVersion, so a null falls back to the
+  /// package's own version — which IS the installed one here.
+  /// [AppInfo.isInstalled] must be true for every entry this returns.
+  AppInfo _installedAppInfo(DebPackageData p) {
+    final info = _toAppInfo(p);
+    if (info.installedVersion != null) return info;
+    return AppInfo(
+      identity: info.identity,
+      name: info.name,
+      summary: info.summary,
+      iconUrl: info.iconUrl,
+      source: info.source,
+      version: info.version,
+      installedVersion: info.version ?? 'unknown',
+    );
+  }
+
+  @override
   Future<List<OperationHandle>> recoverInFlight() async {
     // PackageKit owns its transactions daemon-side, but a raw
     // transaction path cannot be reliably mapped back to (package,

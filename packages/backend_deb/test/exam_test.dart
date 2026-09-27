@@ -93,4 +93,71 @@ void main() {
       expect(await backend.recoverInFlight(), isEmpty);
     });
   });
+
+  group('BackendDeb.listInstalled', () {
+    test(
+      'maps installed names to AppInfos with installedVersion set',
+      () async {
+        final backend = BackendDeb(transport: StubPackageKitTransport());
+        final apps = await backend.listInstalled();
+        expect(apps, hasLength(1));
+        final app = apps.first;
+        expect(app.identity.backendId, 'deb');
+        expect(app.identity.nativeId, 'installed-deb');
+        expect(app.name, 'installed-deb');
+        expect(app.source, AppSource.deb);
+        expect(app.installedVersion, '2.0');
+        expect(app.isInstalled, isTrue);
+      },
+    );
+
+    test('skips entries whose details vanished mid-enumeration', () async {
+      final backend = BackendDeb(transport: _GhostDebTransport());
+      final apps = await backend.listInstalled();
+      expect(apps.map((a) => a.identity.nativeId), ['installed-deb']);
+    });
+
+    test('transport failure throws a typed StoreException', () async {
+      final backend = BackendDeb(transport: _DeadDebTransport());
+      expect(
+        () => backend.listInstalled(),
+        throwsA(isA<BackendUnavailableException>()),
+      );
+    });
+
+    test('empty installed list returns []', () async {
+      final backend = BackendDeb(transport: _EmptyDebTransport());
+      expect(await backend.listInstalled(), isEmpty);
+    });
+  });
+}
+
+/// Reports a ghost package alongside the real one; its details 404.
+class _GhostDebTransport extends StubPackageKitTransport {
+  @override
+  Future<List<String>> installedNames() async => const [
+    'installed-deb',
+    'ghost-deb',
+  ];
+
+  @override
+  Future<DebPackageData> getDetails(String name) async {
+    if (name == 'ghost-deb') {
+      throw PackageKitNotFoundException('package "ghost-deb" not found');
+    }
+    return super.getDetails(name);
+  }
+}
+
+/// PackageKit daemon unreachable.
+class _DeadDebTransport extends StubPackageKitTransport {
+  @override
+  Future<List<String>> installedNames() async =>
+      throw PackageKitTransportException('dbus service unknown');
+}
+
+/// Nothing installed.
+class _EmptyDebTransport extends StubPackageKitTransport {
+  @override
+  Future<List<String>> installedNames() async => const [];
 }

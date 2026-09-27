@@ -15,7 +15,7 @@ const _flatpakInstalled = AppIdentity(
 StoreHost makeHost({Map<String, Object>? flags}) {
   final merged = {'backend.snap.enabled': true, ...?flags};
   final host = StoreHost(flags: MapFeatureFlags(merged));
-  host.registerBackend(BackendFlatpak(transport: StubFlatpakTransport()));
+  host.registerBackend(BackendFlatpak(transport: EmptyListFlatpakTransport()));
   host.registerBackend(StubSnapBackend());
   return host;
 }
@@ -163,8 +163,9 @@ void main() {
     });
 
     test('backends without listInstalled contribute nothing', () async {
-      // Neither the stub flatpak backend nor StubSnapBackend overrides
-      // listInstalled() — the additive default [] must keep them quiet.
+      // StubSnapBackend never overrides listInstalled() and the flatpak
+      // transport reports nothing installed — the additive default []
+      // must keep them quiet.
       final host = makeHost();
       expect(await host.installed(), isEmpty);
     });

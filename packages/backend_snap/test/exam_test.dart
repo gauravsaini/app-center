@@ -85,4 +85,71 @@ void main() {
       expect(terminal, isA<Done>());
     });
   });
+
+  group('BackendSnap.listInstalled', () {
+    test(
+      'maps installed names to AppInfos with installedVersion set',
+      () async {
+        final backend = BackendSnap(transport: StubSnapdTransport());
+        final apps = await backend.listInstalled();
+        expect(apps, hasLength(1));
+        final app = apps.first;
+        expect(app.identity.backendId, 'snap');
+        expect(app.identity.nativeId, 'installed-snap');
+        expect(app.name, 'Installed Snap');
+        expect(app.source, AppSource.snap);
+        expect(app.installedVersion, '2.0');
+        expect(app.isInstalled, isTrue);
+      },
+    );
+
+    test('skips entries whose details vanished mid-enumeration', () async {
+      final backend = BackendSnap(transport: _GhostSnapTransport());
+      final apps = await backend.listInstalled();
+      expect(apps.map((a) => a.identity.nativeId), ['installed-snap']);
+    });
+
+    test('transport failure throws a typed StoreException', () async {
+      final backend = BackendSnap(transport: _DeadSnapdTransport());
+      expect(
+        () => backend.listInstalled(),
+        throwsA(isA<BackendUnavailableException>()),
+      );
+    });
+
+    test('empty installed list returns []', () async {
+      final backend = BackendSnap(transport: _EmptySnapdTransport());
+      expect(await backend.listInstalled(), isEmpty);
+    });
+  });
+}
+
+/// Reports a ghost snap alongside the real one; its details 404.
+class _GhostSnapTransport extends StubSnapdTransport {
+  @override
+  Future<List<String>> installedNames() async => const [
+    'installed-snap',
+    'ghost-snap',
+  ];
+
+  @override
+  Future<SnapSummaryData> getDetails(String name) async {
+    if (name == 'ghost-snap') {
+      throw SnapdNotFoundException('snap "ghost-snap" not found');
+    }
+    return super.getDetails(name);
+  }
+}
+
+/// snapd unreachable.
+class _DeadSnapdTransport extends StubSnapdTransport {
+  @override
+  Future<List<String>> installedNames() async =>
+      throw SnapdTransportException('connection refused');
+}
+
+/// Nothing installed.
+class _EmptySnapdTransport extends StubSnapdTransport {
+  @override
+  Future<List<String>> installedNames() async => const [];
 }

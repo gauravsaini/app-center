@@ -223,6 +223,52 @@ class BackendSnap extends StoreBackend {
   }
 
   @override
+  Future<List<AppInfo>> listInstalled() async {
+    late final List<String> names;
+    try {
+      names = await transport.installedNames();
+    } on SnapdTransportException catch (e) {
+      throw _mapError(e);
+    }
+    // N+1 getDetails is the honest MVP: the transport contract exposes
+    // only names, and installed sets are small. A bulk `installedSnaps()`
+    // transport call would collapse this to one round-trip.
+    final apps = <AppInfo>[];
+    for (final name in names) {
+      late final SnapSummaryData s;
+      try {
+        s = await transport.getDetails(name);
+      } on SnapdNotFoundException {
+        // Removed between installedNames() and getDetails(): skip the
+        // entry rather than failing the whole enumeration.
+        continue;
+      } on SnapdTransportException catch (e) {
+        throw _mapError(e);
+      }
+      apps.add(_installedAppInfo(s));
+    }
+    return apps;
+  }
+
+  /// Maps a snap known to be installed. The snapd getSnap response
+  /// carries no installedVersion field, so a null falls back to the
+  /// snap's own version — for a local snap that IS the installed one.
+  /// [AppInfo.isInstalled] must be true for every entry this returns.
+  AppInfo _installedAppInfo(SnapSummaryData s) {
+    final info = _toAppInfo(s);
+    if (info.installedVersion != null) return info;
+    return AppInfo(
+      identity: info.identity,
+      name: info.name,
+      summary: info.summary,
+      iconUrl: info.iconUrl,
+      source: info.source,
+      version: info.version,
+      installedVersion: info.version ?? 'unknown',
+    );
+  }
+
+  @override
   Future<List<OperationHandle>> recoverInFlight() async {
     late final List<SnapdChangeSnapshot> changes;
     try {

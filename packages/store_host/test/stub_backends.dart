@@ -3,6 +3,7 @@ library;
 
 import 'package:backend_flatpak/backend_flatpak.dart'
     show FlatpakCommandException, FlatpakProcess, FlatpakTransport;
+import 'package:backend_flatpak/testing.dart';
 import 'package:store_host/store_host.dart';
 
 export 'package:backend_flatpak/testing.dart';
@@ -103,6 +104,17 @@ class ThrowingInstalledBackend extends StubSnapBackend {
     debugDetail: 'thrower cannot enumerate installed apps',
     backendId: 'thrower',
   );
+}
+
+/// Flatpak transport reporting no installed apps — keeps the real
+/// [BackendFlatpak.listInstalled] quiet in host tests that pin the
+/// additive default (a backend that never overrides the method).
+class EmptyListFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'list') return const [];
+    return super.run(args);
+  }
 }
 
 /// Flatpak transport whose every command fails — proves the host

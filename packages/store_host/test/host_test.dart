@@ -228,6 +228,14 @@ void main() {
       expect(MapFeatureFlags().isEnabled('pages.manage.unified'), isFalse);
     });
 
+    test('pages.updates.unified defaults to false', () {
+      // The updates surface strangles onto StoreHost.checkUpdates()
+      // via unifiedUpdatesProvider behind this flag; dark until the
+      // badge/section slices flip it (ADR-010: owner libreapp-center,
+      // removal 2027-06-30).
+      expect(MapFeatureFlags().isEnabled('pages.updates.unified'), isFalse);
+    });
+
     test('setFlag notifies via changes', () async {
       final flags = MapFeatureFlags();
       final future = flags.changes.first;

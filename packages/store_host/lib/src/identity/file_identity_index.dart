@@ -20,19 +20,32 @@ import 'package:store_contracts/store_contracts.dart';
 
 class FileIdentityIndexStore {
   /// Loads the layered index: the bundled [seedJson] first (lowest
-  /// priority), then each of [overlayPaths] that exists and parses.
-  /// Missing, unreadable, or unparseable files are skipped —
-  /// individually, never fatally. Worst case returns the seed-only
-  /// index (possibly empty, when the seed itself is garbage).
+  /// priority), then each of [communityPaths] that exists and parses,
+  /// then each of [overlayPaths] (highest priority).
+  ///
+  /// Layer order is seed → community → local overlay
+  /// (docs/architecture/phase3-slice3.md §5 — a deliberate deviation
+  /// from the HLD §4.2 sketch): the community layer outranks the
+  /// seed, but the user's own overlay outranks community, so a
+  /// community update can never silently override a manual
+  /// correction. Missing, unreadable, or unparseable files are
+  /// skipped — individually, never fatally. Worst case returns the
+  /// seed-only index (possibly empty, when the seed itself is
+  /// garbage).
   ///
   /// Never throws for I/O or JSON problems.
   Future<IdentityIndex> load({
     required String seedJson,
+    List<String> communityPaths = const [],
     List<String> overlayPaths = const [],
   }) async {
     final docs = <Map<String, Object?>>[];
     final seedDoc = _tryParseDoc(seedJson);
     if (seedDoc != null) docs.add(seedDoc);
+    for (final path in communityPaths) {
+      final doc = await _tryReadDoc(path);
+      if (doc != null) docs.add(doc);
+    }
     for (final path in overlayPaths) {
       final doc = await _tryReadDoc(path);
       if (doc != null) docs.add(doc);

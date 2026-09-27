@@ -69,3 +69,14 @@ melos test
 melos analyze --fatal-infos
 melos format:exclude
 ```
+
+## PR Review Gate: fresh-context trim review
+
+After raising a PR (before asking for human review) — see ADR-012:
+
+1. Spawn a dedicated review subagent with a **fresh context**: give it only `gh pr diff <n>` + the slice's HLD/LLD + acceptance criteria.
+2. Brief it: break down what can be cut down, what can be removed from the PR — file by file, be brutal.
+3. Apply accepted trims as follow-up commits; re-run the checklist above; push.
+4. Gate completes when the reviewer signs off ("nothing further worth cutting") and the branch is green.
+
+Trims must never weaken test coverage or the HLD/LLD contract surface.

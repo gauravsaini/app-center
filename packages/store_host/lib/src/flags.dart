@@ -41,6 +41,11 @@ class MapFeatureFlags implements FeatureFlags {
     // localDebUpdatesModelProvider).
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'pages.updates.unified': false,
+    // Kill switch for the AppImage backend plugin (Phase 1): false →
+    // backend never registered, host behaves as if AppImage support
+    // does not exist. Default off: new backend, needs dogfooding.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'backend.appimage.enabled': false,
   };
 
   final Map<String, Object> _values;

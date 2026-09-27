@@ -11,6 +11,7 @@ dependencies:
   app_center_ratings_client: ^1.0.0
   appstream: ^0.2.11
   args: ^2.5.0
+  backend_appimage: ^0.1.0
   backend_deb: ^0.1.0
   backend_flatpak: ^0.1.0
   backend_snap: ^0.1.0

@@ -88,6 +88,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.1"
+  backend_appimage:
+    dependency: "direct main"
+    description:
+      path: "../backend_appimage"
+      relative: true
+    source: path
+    version: "0.1.0"
   backend_deb:
     dependency: "direct main"
     description:

@@ -164,7 +164,7 @@ disable is a debugging tool, not a feature).
 |---|---|---|
 | No caching (status quo) | Rejected | 12+ probe round-trips per poll tick; each is a process spawn or D-Bus call. Cheap individually, wasteful in aggregate, and every probe is a flake surface. |
 | Backend-side caching | Rejected | Requires touching all four backends + the exam; the contract says `isAvailable()` is "safe to call twice", which permits host-side caching but does not require backends to implement it. Also untestable per-backend without new seams. |
-| **Host-side memoization, 30s TTL** | **Chosen** | One place, additive to `host.dart`, testable with the existing fake `TimerFactory` (TTL expiry = timer advance, no wall clock — same pattern as the stall watchdog). The <200ms exam is untouched: the exam probes backends, not the host. |
+| **Host-side memoization, 30s TTL** | **Chosen** | One place, additive to `host.dart`, testable with an injectable `Clock` (TTL expiry = clock advance in tests; the engine never calls `DateTime.now()` directly). The <200ms exam is untouched: the exam probes backends, not the host. |
 
 Why the semantics stay safe:
 
@@ -180,6 +180,16 @@ Why the semantics stay safe:
 - The memoized probe still runs *inside* the `_raceOne` budget in the
   detailed fan-outs (a cache read is instant; a cache miss re-probes
   under the same timeout). No contract change.
+
+**Amendment (2026-09-27):** expiry is **lazy via an injectable `Clock`**,
+not a `TimerFactory` invalidation timer. Each cache entry carries its
+probe timestamp; a read older than the TTL re-probes. Rationale: expiry
+never needs to fire proactively (unlike the stall watchdog, which must
+act at its deadline), so arming a 30s timer per probe bought nothing —
+and it leaked pending timers into every `StoreHost` construction site,
+tripping the test framework's teardown invariant in 22 app widget tests
+that build real hosts. Observable semantics are unchanged (30s TTL,
+`<= 0` disables, per-backend isolation, flag-off bypass).
 
 ### 5. Host behavior — DECIDED: `StoreHost` logic unchanged
 

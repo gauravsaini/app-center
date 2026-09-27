@@ -26,23 +26,37 @@ typedef TimerFactory =
 Timer _realTimerFactory(Duration duration, void Function() callback) =>
     Timer(duration, callback);
 
-/// One memoized `isAvailable()` result. The invalidation timer is armed
-/// from the host's injectable [TimerFactory] — the engine never reads
-/// the wall clock (same pattern as the stall watchdog).
+/// Injectable wall-clock for the probe cache's lazy TTL expiry.
+/// Production passes [DateTime.now]; tests pass a mutable fake.
+/// The engine never calls `DateTime.now()` directly.
+typedef Clock = DateTime Function();
+
+/// Production [Clock].
+DateTime _realClock() => DateTime.now();
+
+/// One memoized `isAvailable()` result. Expiry is evaluated lazily on
+/// read against the host's injectable [Clock] — no invalidation timer
+/// is ever armed, so a [StoreHost] can never leak pending timers into
+/// a test's teardown (or a widget tree's dispose).
 class _ProbeCacheEntry {
-  _ProbeCacheEntry(this.value, this.invalidate);
+  _ProbeCacheEntry(this.value, this.cachedAt);
 
   final bool value;
-  final Timer invalidate;
+  final DateTime cachedAt;
 }
 
 class StoreHost implements UnifiedCatalog, OperationEngine {
-  StoreHost({required FeatureFlags flags, TimerFactory? timerFactory})
-    : _flags = flags,
-      _timerFactory = timerFactory ?? _realTimerFactory;
+  StoreHost({
+    required FeatureFlags flags,
+    TimerFactory? timerFactory,
+    Clock? clock,
+  }) : _flags = flags,
+       _timerFactory = timerFactory ?? _realTimerFactory,
+       _clock = clock ?? _realClock;
 
   final FeatureFlags _flags;
   final TimerFactory _timerFactory;
+  final Clock _clock;
   final List<StoreBackend> _backends = [];
   final Map<String, OperationHandle> _inflight = {};
   final StreamController<List<OperationHandle>> _activeChanges =
@@ -84,6 +98,11 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// disables caching entirely (every call probes). A throwing probe
   /// still counts as unavailable.
   ///
+  /// Expiry is lazy: entries carry the probe timestamp and are
+  /// re-probed on read once older than the TTL. No invalidation timer
+  /// is ever armed — expiry never needs to fire proactively (unlike
+  /// the stall watchdog), so the cache cannot leak pending timers.
+  ///
   /// Why the semantics stay safe: a stale `true` only costs one failed
   /// fetch (the fan-out degrades to partial as before); a stale
   /// `false` excludes the backend for at most the TTL, then the next
@@ -98,18 +117,17 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
       }
     }
     final hit = _probeCache[backend.id];
-    if (hit != null) return hit.value;
+    if (hit != null &&
+        _clock().difference(hit.cachedAt).inMilliseconds < ttlMs) {
+      return hit.value;
+    }
     bool value;
     try {
       value = await backend.isAvailable();
     } catch (_) {
       value = false;
     }
-    final invalidate = _timerFactory(
-      Duration(milliseconds: ttlMs),
-      () => _probeCache.remove(backend.id),
-    );
-    _probeCache[backend.id] = _ProbeCacheEntry(value, invalidate);
+    _probeCache[backend.id] = _ProbeCacheEntry(value, _clock());
     return value;
   }
 

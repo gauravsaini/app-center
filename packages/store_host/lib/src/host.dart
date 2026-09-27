@@ -5,6 +5,11 @@
 /// cross-backend merging. The product thesis prefers duplicate cards
 /// over unsafe merges; smart merging arrives with the community
 /// metadata index, not with heuristics here.
+///
+/// When `phase3.identity.enabled` is true, [search] and
+/// [installedDetailed] merge by canonical id instead
+/// (docs/architecture/phase3-slice2.md §3); unresolved apps keep the v1
+/// grouping bit for bit.
 library;
 
 import 'dart:async';
@@ -16,6 +21,7 @@ import 'check_updates_result.dart';
 import 'identity/file_identity_index.dart';
 import 'identity/identity_resolver.dart';
 import 'identity/seed_index.dart';
+import 'identity/source_preference_store.dart';
 import 'installed_result.dart';
 
 /// Creates single-shot [Timer]s. Injected into [StoreHost] so the stall
@@ -49,18 +55,38 @@ class _ProbeCacheEntry {
   final DateTime cachedAt;
 }
 
+/// One canonical group under construction by [_mergeByIdentity]
+/// (phase3-slice2.md §3): the merge key plus the resolved canonical id
+/// (null when every member is unresolved) and the member variants in
+/// input (registration) order.
+class _MergeGroup {
+  _MergeGroup(this.key, this.canonical);
+
+  final String key;
+  final CanonicalAppId? canonical;
+  final List<AppInfo> variants = [];
+}
+
 class StoreHost implements UnifiedCatalog, OperationEngine {
   StoreHost({
     required FeatureFlags flags,
     TimerFactory? timerFactory,
     Clock? clock,
+    String? sourcePreferencesPath,
   }) : _flags = flags,
        _timerFactory = timerFactory ?? _realTimerFactory,
-       _clock = clock ?? _realClock;
+       _clock = clock ?? _realClock,
+       _sourcePreferencesPath = sourcePreferencesPath;
 
   final FeatureFlags _flags;
   final TimerFactory _timerFactory;
   final Clock _clock;
+
+  /// Overrides the source-preferences file location (tests). Null →
+  /// the store resolves `~/.local/share/libreapp-center/
+  /// source-preferences.json` from `HOME` (in-memory only when `HOME`
+  /// is absent).
+  final String? _sourcePreferencesPath;
   final List<StoreBackend> _backends = [];
   final Map<String, OperationHandle> _inflight = {};
   final StreamController<List<OperationHandle>> _activeChanges =
@@ -76,6 +102,12 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// `phase3.identity.enabled` is false.
   IdentityIndex? _identityIndex;
   IdentityResolver? _identityResolver;
+
+  /// Lazy Phase 3 source-preference store (phase3-slice2.md §4): the
+  /// user's per-app remembered source choice (HLD §6 rule 2). Built on
+  /// first use and cached for the host's lifetime — slice 2 has no
+  /// reload API.
+  SourcePreferenceStore? _preferenceStore;
 
   /// Register a backend plugin. Called once at the composition root
   /// (the app's `main.dart`) — never from UI pages.
@@ -165,8 +197,16 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
           return;
         }
         var pending = backends.length;
+        // Phase 3 (phase3-slice2.md §3): when identity merging is on,
+        // AppInfos buffer until every backend has responded, then
+        // merge by canonical id. Flag off → per-app emission, exactly
+        // today's behavior.
+        final identityMerge = _flags.isEnabled('phase3.identity.enabled');
+        final buffered = <AppInfo>[];
         void finishOne() {
-          if (--pending == 0 && !controller.isClosed) controller.close();
+          if (--pending == 0) {
+            unawaited(_finishSearch(controller, identityMerge, buffered));
+          }
         }
 
         final timeoutMs = _flags.getInt('catalog.search_timeout_ms');
@@ -183,12 +223,16 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
                 .listen(
                   (app) {
                     if (!cancelled && !controller.isClosed) {
-                      controller.add(
-                        UnifiedApp(
-                          groupId: '${b.id}:${app.identity.nativeId}',
-                          variants: [app],
-                        ),
-                      );
+                      if (identityMerge) {
+                        buffered.add(app);
+                      } else {
+                        controller.add(
+                          UnifiedApp(
+                            groupId: '${b.id}:${app.identity.nativeId}',
+                            variants: [app],
+                          ),
+                        );
+                      }
                     }
                   },
                   // A backend failing or stalling degrades to partial
@@ -209,6 +253,136 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     return controller.stream;
   }
 
+  /// Closes out a search fan-out. With identity merging on, the
+  /// buffered [AppInfo]s are resolved, grouped, and ordered
+  /// (phase3-slice2.md §3) before emission; otherwise the per-app
+  /// stream already carried everything and the controller just closes.
+  Future<void> _finishSearch(
+    StreamController<UnifiedApp> controller,
+    bool identityMerge,
+    List<AppInfo> buffered,
+  ) async {
+    try {
+      if (identityMerge && !controller.isClosed) {
+        for (final app in await _mergeByIdentity(buffered)) {
+          if (controller.isClosed) break;
+          controller.add(app);
+        }
+      }
+    } finally {
+      if (!controller.isClosed) await controller.close();
+    }
+  }
+
+  /// Groups [apps] into [UnifiedApp]s by canonical id
+  /// (phase3-slice2.md §3). Each app is resolved via [resolveIdentity];
+  /// resolved apps merge on the canonical id string, unresolved apps
+  /// keep today's `${backendId}:${nativeId}` key — bit for bit the v1
+  /// grouping for the unresolved case. Group emission order is
+  /// first-seen (registration order of the input); variants inside a
+  /// group follow the HLD §6 merge policy — installed wins → user
+  /// preference → `catalog.backend_order` → registration order.
+  /// `preferred` is `variants.first` — no special-casing.
+  Future<List<UnifiedApp>> _mergeByIdentity(List<AppInfo> apps) async {
+    final groups = <String, _MergeGroup>{};
+    for (final app in apps) {
+      final canonical = await resolveIdentity(app.identity, app.identitySignal);
+      final key =
+          canonical?.toString() ??
+          '${app.identity.backendId}:${app.identity.nativeId}';
+      (groups[key] ??= _MergeGroup(key, canonical)).variants.add(app);
+    }
+    final prefs = await _preferences();
+    final backendOrder = _flags
+        .getString('catalog.backend_order')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return [
+      for (final group in groups.values)
+        UnifiedApp(
+          groupId: group.key,
+          canonicalId: group.canonical,
+          variants: _orderVariants(
+            group.variants,
+            group.canonical,
+            prefs,
+            backendOrder,
+          ),
+        ),
+    ];
+  }
+
+  /// HLD §6 variant ordering, verbatim:
+  /// 1. installed source wins (`installedVersion != null` first),
+  /// 2. user preference ([SourcePreferenceStore], keyed by canonical
+  ///    id string; an id no variant recognizes is ignored),
+  /// 3. `catalog.backend_order` flag index (unlisted backends rank
+  ///    after all listed ones),
+  /// 4. registration order (explicit input index — never sort
+  ///    stability).
+  List<AppInfo> _orderVariants(
+    List<AppInfo> variants,
+    CanonicalAppId? canonical,
+    SourcePreferenceStore prefs,
+    List<String> backendOrder,
+  ) {
+    final preferredBackend = canonical == null
+        ? null
+        : prefs.preferenceFor(canonical.toString());
+    int rank(String backendId) {
+      final idx = backendOrder.indexOf(backendId);
+      return idx < 0 ? backendOrder.length : idx;
+    }
+
+    final indexed = [
+      for (var i = 0; i < variants.length; i++) (i, variants[i]),
+    ];
+    indexed.sort((x, y) {
+      // 1. Installed source wins.
+      final xi = x.$2.installedVersion != null ? 0 : 1;
+      final yi = y.$2.installedVersion != null ? 0 : 1;
+      if (xi != yi) return xi.compareTo(yi);
+      // 2. User preference.
+      if (preferredBackend != null) {
+        final xp = x.$2.identity.backendId == preferredBackend ? 0 : 1;
+        final yp = y.$2.identity.backendId == preferredBackend ? 0 : 1;
+        if (xp != yp) return xp.compareTo(yp);
+      }
+      // 3. Flag order.
+      final xo = rank(x.$2.identity.backendId);
+      final yo = rank(y.$2.identity.backendId);
+      if (xo != yo) return xo.compareTo(yo);
+      // 4. Registration order.
+      return x.$1.compareTo(y.$1);
+    });
+    return [for (final (_, v) in indexed) v];
+  }
+
+  /// Remembers the user's source choice for one canonical app
+  /// (phase3-slice2.md §4, HLD §6 rule 2). The [backendId] is stored
+  /// verbatim — an id no backend recognizes is kept and ignored at
+  /// ordering time. Survives restarts via
+  /// `~/.local/share/libreapp-center/source-preferences.json`.
+  Future<void> setPreferredSource(CanonicalAppId id, String backendId) async {
+    final store = await _preferences();
+    await store.setPreferred(id.toString(), backendId);
+  }
+
+  /// Lazy source-preference store, built on first use and cached for
+  /// the host's lifetime (slice 2: no reload API). The load never
+  /// throws (corrupt/missing file → empty preferences).
+  Future<SourcePreferenceStore> _preferences() async {
+    var store = _preferenceStore;
+    if (store == null) {
+      store = SourcePreferenceStore(filePath: _sourcePreferencesPath);
+      await store.load();
+      _preferenceStore = store;
+    }
+    return store;
+  }
+
   /// Detailed installed listing: parallel fan-out over every enabled
   /// backend with a per-backend timeout
   /// (docs/architecture/parallel-installed.md §1).
@@ -219,6 +393,10 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// throws. Results are reassembled in backend registration order,
   /// never completion order. One [UnifiedApp] per [AppInfo] — no
   /// cross-backend merging (v1 grouping policy, same as search()).
+  ///
+  /// When `phase3.identity.enabled` is true, apps merge by canonical id
+  /// instead (docs/architecture/phase3-slice2.md §3); unresolved apps
+  /// keep the v1 per-backend grouping bit for bit.
   Future<InstalledResult> installedDetailed() async {
     final timeoutMs = _flags.getInt('installed.backend_timeout_ms');
     final timeout = Duration(milliseconds: timeoutMs > 0 ? timeoutMs : 30000);
@@ -243,22 +421,31 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     ]);
     final apps = <UnifiedApp>[];
     final partial = <String>[];
+    final identityMerge = _flags.isEnabled('phase3.identity.enabled');
+    final toMerge = <AppInfo>[];
     for (var i = 0; i < backends.length; i++) {
       final slot = slots[i];
       if (slot == null) {
         partial.add(backends[i].id);
         continue;
       }
-      for (final app in slot) {
-        apps.add(
-          UnifiedApp(
-            groupId: '${backends[i].id}:${app.identity.nativeId}',
-            variants: [app],
-          ),
-        );
+      if (identityMerge) {
+        toMerge.addAll(slot);
+      } else {
+        for (final app in slot) {
+          apps.add(
+            UnifiedApp(
+              groupId: '${backends[i].id}:${app.identity.nativeId}',
+              variants: [app],
+            ),
+          );
+        }
       }
     }
-    return InstalledResult(apps: apps, partialBackendIds: partial);
+    return InstalledResult(
+      apps: identityMerge ? await _mergeByIdentity(toMerge) : apps,
+      partialBackendIds: partial,
+    );
   }
 
   @override

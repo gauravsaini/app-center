@@ -124,8 +124,12 @@ abstract class OperationHandle {
   OperationState get current;
 
   /// Request cancellation. Safe in any state; no-op when terminal.
-  /// The backend MUST reach a terminal state within 2s, and MUST NOT
-  /// convert a user cancel into a bare [Failed].
+  ///
+  /// Prompt acknowledgment: the backend MUST emit [Cancelling] within 2s
+  /// and MUST NOT start new work afterwards. The terminal state follows
+  /// as soon as the in-flight atomic unit completes
+  /// (`operation-state-machine.md` §3). A user cancel MUST NOT become a
+  /// bare [Failed].
   Future<void> cancel();
 }
 

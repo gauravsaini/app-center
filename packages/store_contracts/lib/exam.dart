@@ -241,15 +241,33 @@ Future<void> _cancelFromActivePhase(
   }
 
   final sw = Stopwatch()..start();
+  // Record post-cancel events: the contract requires a prompt
+  // `cancelling` acknowledgment (§3), not just an eventual terminal.
+  final seen = <OperationState>[];
+  final sub = handle.state.listen(seen.add);
   await handle.cancel();
+  final ackDeadline = DateTime.now().add(const Duration(seconds: 2));
+  while (!seen.any((s) => s is Cancelling)) {
+    if (DateTime.now().isAfter(ackDeadline)) {
+      await sub.cancel();
+      _fail(check, 'cancel() did not emit cancelling within 2s');
+    }
+    if (handle.current.isTerminal) break;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
   final terminalDeadline = DateTime.now().add(const Duration(seconds: 15));
   while (!handle.current.isTerminal) {
     if (DateTime.now().isAfter(terminalDeadline)) {
+      await sub.cancel();
       _fail(check, 'cancel() did not reach a terminal state within 15s');
     }
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
+  await sub.cancel();
   sw.stop();
+  if (!seen.any((s) => s is Cancelling)) {
+    _fail(check, 'cancel() never emitted cancelling — §3 requires it');
+  }
   final terminal = handle.current;
   if (terminal is! Cancelled && terminal is! Done) {
     _fail(
@@ -263,11 +281,14 @@ Future<void> _cancelFromActivePhase(
       'user cancel converted into Failed — forbidden by the contract',
     );
   }
-  // Spec budget is 2s; the exam allows 5s slack for loaded machines.
+  // The exam enforces ≤5s to terminal on scripted fixtures as a
+  // hung-backend tripwire; production's bound is the atomic unit's
+  // natural length (§3).
   if (sw.elapsedMilliseconds > 5000) {
     _fail(
       check,
-      'cancel() took ${sw.elapsedMilliseconds}ms to reach terminal; spec requires ≤2s',
+      'cancel() took ${sw.elapsedMilliseconds}ms to reach terminal; '
+      'exam budget is 5s on fixtures',
     );
   }
 }

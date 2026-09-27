@@ -10,6 +10,8 @@ export 'src/catalog.dart';
 export 'src/engine.dart';
 export 'src/errors.dart';
 export 'src/flags.dart';
+export 'src/heartbeat.dart';
 export 'src/identity.dart';
 export 'src/operation.dart';
+export 'src/stall.dart';
 export 'src/version.dart';

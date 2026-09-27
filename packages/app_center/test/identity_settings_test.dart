@@ -289,7 +289,9 @@ void main() {
     // Honest copy: the signature disclaimer is always visible.
     expect(find.text(l10n.settingsCommunitySignatureNote), findsOneWidget);
     expect(find.text(l10n.settingsCommunityMirrors(0)), findsOneWidget);
-    expect(find.text(l10n.settingsCommunityNeverRefreshed), findsOneWidget);
+    // Slice 6 adds the metadata subsection to this section; it reuses
+    // the same "Never refreshed" copy for its own last-refresh line.
+    expect(find.text(l10n.settingsCommunityNeverRefreshed), findsNWidgets(2));
     expect(find.text(l10n.settingsCommunityRefreshButton), findsOneWidget);
   });
 

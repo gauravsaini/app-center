@@ -4,3 +4,6 @@ export 'manage_app_tile.dart';
 export 'manage_page.dart';
 export 'unified_installed_provider.dart';
 export 'unified_manage_page.dart';
+export 'unified_updates_manage_page.dart';
+export 'unified_updates_provider.dart';
+export 'unified_updates_section.dart';

@@ -179,6 +179,7 @@ class _BackendBadge extends StatelessWidget {
       AppSource.flatpak => l10n.unifiedDetailsFlatpakBadge,
       AppSource.appImage => 'AppImage',
       AppSource.rpm => 'RPM',
+      AppSource.pacman => 'pacman',
       AppSource.unknown || null => '?',
     };
     return Container(
@@ -239,6 +240,7 @@ class _VariantSwitcher extends StatelessWidget {
       AppSource.flatpak => l10n.unifiedDetailsFlatpakBadge,
       AppSource.appImage => 'AppImage',
       AppSource.rpm => 'RPM',
+      AppSource.pacman => 'pacman',
       AppSource.unknown => '?',
     };
   }

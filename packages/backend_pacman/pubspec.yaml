@@ -1,0 +1,14 @@
+name: backend_pacman
+description: pacman backend for the unified *nix store — pacman CLI subprocess transport implementing the store_contracts law, with a 4-token package-id seam (name;version;arch;repo), pkexec privilege elevation, and checkupdates/pacman -Qu update checks (research D1-D12).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+
+dependencies:
+  store_contracts:
+    path: ../store_contracts
+
+dev_dependencies:
+  test: ^1.25.0

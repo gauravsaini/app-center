@@ -169,13 +169,36 @@ void main() {
       expect(flags.isEnabled('backend.appimage.enabled'), isFalse);
     });
 
-    test('arch-like -> same seeds as fedora-like', () {
+    test('arch-like -> same seeds as fedora-like, plus pacman seeded on', () {
       final flags = MapFeatureFlags();
       seedPlatformBackendDefaults(flags, _archPlatform);
       expect(flags.isEnabled('backend.snap.enabled'), isFalse);
       expect(flags.isEnabled('backend.deb.enabled'), isFalse);
       expect(flags.isEnabled('backend.flatpak.enabled'), isTrue);
       expect(flags.isEnabled('backend.appimage.enabled'), isFalse);
+      expect(flags.isEnabled('backend.rpm.enabled'), isFalse);
+      // pacman is unambiguous on Arch-like systems (the probe is
+      // `pacman --version`, which only passes where pacman exists) —
+      // seeded ON (research D11).
+      expect(flags.isEnabled('backend.pacman.enabled'), isTrue);
+    });
+
+    test('fedora-like (not arch-like) -> pacman stays dark', () {
+      final flags = MapFeatureFlags();
+      seedPlatformBackendDefaults(flags, _fedoraPlatform);
+      expect(flags.isEnabled('backend.pacman.enabled'), isFalse);
+    });
+
+    test('setFlag always wins over the seeded pacman default', () {
+      final arch = MapFeatureFlags();
+      seedPlatformBackendDefaults(arch, _archPlatform);
+      arch.setFlag('backend.pacman.enabled', false);
+      expect(arch.isEnabled('backend.pacman.enabled'), isFalse);
+
+      final debian = MapFeatureFlags();
+      seedPlatformBackendDefaults(debian, _debianPlatform);
+      debian.setFlag('backend.pacman.enabled', true);
+      expect(debian.isEnabled('backend.pacman.enabled'), isTrue);
     });
 
     test(

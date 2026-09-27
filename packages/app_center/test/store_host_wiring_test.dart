@@ -2,6 +2,7 @@ import 'package:app_center/store/store_host_wiring.dart';
 import 'package:backend_appimage/testing.dart';
 import 'package:backend_deb/testing.dart';
 import 'package:backend_flatpak/testing.dart';
+import 'package:backend_pacman/testing.dart';
 import 'package:backend_rpm/testing.dart';
 import 'package:backend_snap/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,13 @@ const _fedora = PlatformInfo(
   id: 'fedora',
   idLike: [],
   prettyName: 'Fedora Linux',
+);
+
+/// Arch-like platform: pacman is seeded on (research D11), snap+deb off.
+const _arch = PlatformInfo(
+  id: 'arch',
+  idLike: ['arch'],
+  prettyName: 'Arch Linux',
 );
 
 void main() {
@@ -147,14 +155,83 @@ void main() {
       // distro-agnostic (unchanged); appimage stays dogfooding-gated.
       // rpm is NOT auto-enabled on fedora-like systems — a separate,
       // deferred decision (rpm-backend-hld.md §5); default off holds.
+      // pacman is seeded on ONLY for arch-like systems (research D11);
+      // on fedora it stays dark.
       expect(flags.isEnabled('backend.snap.enabled'), isFalse);
       expect(flags.isEnabled('backend.deb.enabled'), isFalse);
       expect(flags.isEnabled('backend.flatpak.enabled'), isTrue);
       expect(flags.isEnabled('backend.appimage.enabled'), isFalse);
       expect(flags.isEnabled('backend.rpm.enabled'), isFalse);
+      expect(flags.isEnabled('backend.pacman.enabled'), isFalse);
 
       final backends = await host.enabledBackends();
       expect(backends.map((b) => b.id).toList(), ['flatpak']);
+    },
+  );
+
+  test(
+    'wiring: arch-like platformOverride seeds pacman on, snap+deb off',
+    () async {
+      final flags = MapFeatureFlags();
+      final host = buildStoreHost(
+        flags,
+        platformOverride: _arch,
+        snapTransport: StubSnapdTransport(),
+        flatpakTransport: StubFlatpakTransport(),
+        debTransport: StubPackageKitTransport(),
+        appimageTransport: StubAppimageTransport(),
+        rpmTransport: StubRpmTransport(),
+        pacmanTransport: StubPacmanTransport(),
+      );
+
+      // pacman is unambiguous on Arch-like systems (the probe is
+      // `pacman --version`, which only passes where pacman exists) —
+      // seeded ON (research D11); user setFlag still wins.
+      expect(flags.isEnabled('backend.snap.enabled'), isFalse);
+      expect(flags.isEnabled('backend.deb.enabled'), isFalse);
+      expect(flags.isEnabled('backend.flatpak.enabled'), isTrue);
+      expect(flags.isEnabled('backend.rpm.enabled'), isFalse);
+      expect(flags.isEnabled('backend.pacman.enabled'), isTrue);
+
+      final backends = await host.enabledBackends();
+      expect(backends.map((b) => b.id).toList(), ['flatpak', 'pacman']);
+
+      // Operator flip wins over the seeded default.
+      flags.setFlag('backend.pacman.enabled', false);
+      final off = await host.enabledBackends();
+      expect(off.map((b) => b.id), isNot(contains('pacman')));
+    },
+  );
+
+  test(
+    'wiring: pacman registered dark by default, flag-on surfaces it',
+    () async {
+      final flags = MapFeatureFlags();
+      final host = buildStoreHost(
+        flags,
+        platformOverride: _ubuntu,
+        snapTransport: StubSnapdTransport(),
+        flatpakTransport: StubFlatpakTransport(),
+        debTransport: StubPackageKitTransport(),
+        appimageTransport: StubAppimageTransport(),
+        pacmanTransport: StubPacmanTransport(),
+      );
+
+      // Ships dark off Arch-like systems; the compiled default is off.
+      expect(flags.isEnabled('backend.pacman.enabled'), isFalse);
+      final dark = await host.enabledBackends();
+      expect(dark.map((b) => b.id), isNot(contains('pacman')));
+
+      // Operator flip: the registered backend answers flag reads and
+      // probes like any other backend.
+      flags.setFlag('backend.pacman.enabled', true);
+      final backends = await host.enabledBackends();
+      expect(backends.map((b) => b.id).toList(), [
+        'snap',
+        'flatpak',
+        'deb',
+        'pacman',
+      ]);
     },
   );
 

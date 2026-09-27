@@ -2,11 +2,23 @@
 /// Manage page strangler-fig slice, plus the filter/sort state for the
 /// unified Manage page polish.
 ///
-/// Reads [StoreHost.installed()], which fans out over every registered
-/// backend and returns one [UnifiedApp] per installed app (v1 grouping:
-/// no cross-backend merging). A backend failing degrades to partial
-/// results — the host never throws — so this provider only errors if
-/// something above the host breaks.
+/// The single fetch lives in [unifiedInstalledResultProvider]: it calls
+/// [StoreHost.installedDetailed()], which fans out over every registered
+/// backend with a per-backend `installed.backend_timeout_ms` budget and
+/// returns one [UnifiedApp] per installed app (v1 grouping: no
+/// cross-backend merging). [unifiedInstalledProvider] is a thin
+/// projection over it (`.apps`) — both share the one in-flight fetch,
+/// so no backend is ever listed twice.
+///
+/// A backend failing degrades to partial results — the host never throws
+/// — so these providers only error if something above the host breaks.
+/// Partiality is surfaced from the result provider via
+/// [InstalledResult.isPartial] (docs/architecture/parallel-installed.md).
+///
+/// INVALIDATION CONTRACT: refetch by invalidating
+/// [unifiedInstalledResultProvider], never the projection — invalidating
+/// [unifiedInstalledProvider] alone re-runs the projection against the
+/// result provider's cached value and does NOT refetch.
 ///
 /// Filtering and sorting are client-side over the fetched list (installed
 /// sets are tens of items; no backend query needed) in
@@ -21,19 +33,37 @@ library;
 import 'package:app_center/l10n.dart';
 import 'package:app_center/store/store_host_wiring.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:store_contracts/store_contracts.dart';
 import 'package:store_host/store_host.dart';
 
-/// All apps the unified store reports as installed, for the Manage page
-/// (`pages.manage.unified` flag on).
+/// The full installed-listing result from the unified store, for the
+/// Manage page (`pages.manage.unified` flag on).
+///
+/// This provider owns the single fetch: [StoreHost.installedDetailed()]
+/// fans out over the backends with a per-backend budget; a hung or
+/// throwing backend is excluded and recorded in
+/// [InstalledResult.partialBackendIds] instead of failing the listing.
 ///
 /// Keep-alive: stale-while-revalidate. The old list stays visible while a
 /// refetch is in flight (pull-to-refresh / operation completion), so the
 /// page shows a slim progress indicator instead of a full-page spinner.
-final unifiedInstalledProvider = FutureProvider<List<UnifiedApp>>((ref) {
+/// Invalidating this provider is what refetches — see the invalidation
+/// contract in the file doc comment.
+final unifiedInstalledResultProvider = FutureProvider<InstalledResult>((ref) {
   ref.keepAlive();
-  return ref.watch(storeHostProvider).installed();
-}, name: 'unifiedInstalledProvider');
+  return ref.watch(storeHostProvider).installedDetailed();
+}, name: 'unifiedInstalledResultProvider');
+
+/// All apps the unified store reports as installed, for the Manage page
+/// (`pages.manage.unified` flag on).
+///
+/// A projection over [unifiedInstalledResultProvider]: same type and
+/// contract as before (one [UnifiedApp] per installed app), no second
+/// fetch. Do NOT invalidate this to refetch — refetch sites invalidate
+/// [unifiedInstalledResultProvider] instead.
+final unifiedInstalledProvider = FutureProvider<List<UnifiedApp>>(
+  (ref) async => (await ref.watch(unifiedInstalledResultProvider.future)).apps,
+  name: 'unifiedInstalledProvider',
+);
 
 /// Free-text search over installed app names (case-insensitive substring).
 /// Written by the toolbar's debounced search field; read by

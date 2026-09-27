@@ -2,10 +2,15 @@
 ///
 /// Rendered instead of the legacy Manage page when the
 /// `pages.manage.unified` flag is on.
-/// Lists the [UnifiedApp]s from [StoreHost.installed()] with one row per
-/// app: name, installed version, and a backend badge. Removal is driven
-/// through the host via [UnifiedInstallButton] (installed apps resolve
-/// to [OperationKind.remove]) — never backend services directly.
+/// Lists the [UnifiedApp]s from [StoreHost.installedDetailed()] with one
+/// row per app: name, installed version, and a backend badge. Removal is
+/// driven through the host via [UnifiedInstallButton] (installed apps
+/// resolve to [OperationKind.remove]) — never backend services directly.
+///
+/// The rows read the [unifiedInstalledProvider] projection; the page
+/// watches [unifiedInstalledResultProvider] for partiality and
+/// invalidates it (never the projection) to refetch — see the
+/// invalidation contract in unified_installed_provider.dart.
 ///
 /// Affordances: debounced free-text search, per-source filter chips
 /// (only for sources present in the list), name A–Z/Z–A sort,
@@ -14,9 +19,11 @@
 ///
 /// States: loading spinner, [ErrorView] with retry (the host itself
 /// never throws, but the provider can still fail above the host), and
-/// an empty state when no backend reports installed apps. The provider
-/// is keep-alive, so refetches keep the old list visible behind a slim
-/// progress indicator instead of flashing a full-page spinner.
+/// an empty state when no backend reports installed apps. A hung or
+/// throwing backend degrades to partial results with a quiet caption —
+/// never an error state. The provider is keep-alive, so refetches keep
+/// the old list visible behind a slim progress indicator instead of
+/// flashing a full-page spinner.
 ///
 /// No `backend_*` import by design: this file sees only the host, the
 /// contracts, and app_center internals.
@@ -50,15 +57,25 @@ class UnifiedManagePage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
     final installed = ref.watch(unifiedInstalledProvider);
+    // The result provider owns the fetch; the rows read its `.apps`
+    // projection. A hung/excluded backend marks the result partial — the
+    // page shows a quiet caption, never an error
+    // (parallel-installed.md §6).
+    final isPartial =
+        ref.watch(unifiedInstalledResultProvider).valueOrNull?.isPartial ??
+        false;
     final visibleApps = ref.watch(unifiedManageVisibleAppsProvider);
     final refreshing = installed.isRefreshing || installed.isReloading;
 
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(unifiedInstalledProvider);
+        // Invalidate the result provider: it owns the single fetch — the
+        // projection joins it (no double fetch). Invalidating the
+        // projection alone would NOT refetch.
+        ref.invalidate(unifiedInstalledResultProvider);
         // Await the refetch so the indicator tracks real progress
         // instead of dismissing immediately.
-        await ref.read(unifiedInstalledProvider.future);
+        await ref.read(unifiedInstalledResultProvider.future);
       },
       child: ResponsiveLayoutScrollView(
         // Lets pull-to-refresh trigger even when the list is short.
@@ -84,6 +101,20 @@ class UnifiedManagePage extends ConsumerWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                // Quiet partial caption: one or more backends didn't
+                // answer this tick (hung past the budget or threw), so
+                // the list may be incomplete. Same caption the updates
+                // section uses; no modal, no error styling — the next
+                // tick retries every backend (parallel-installed.md §6).
+                if (isPartial) ...[
+                  const SizedBox(height: kSpacingSmall),
+                  Text(
+                    l10n.managePagePartialUpdatesCaption,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: kMarginLarge),
               ],
             ),
@@ -112,7 +143,7 @@ class UnifiedManagePage extends ConsumerWidget {
               // sizes it to its content inside the unbounded sliver.
               child: ErrorView(
                 error: error,
-                onRetry: () => ref.invalidate(unifiedInstalledProvider),
+                onRetry: () => ref.invalidate(unifiedInstalledResultProvider),
               ),
             ),
             loading: () => const SliverToBoxAdapter(
@@ -163,14 +194,16 @@ class _RefreshTriggerState extends ConsumerState<_RefreshTrigger> {
     _debounce?.cancel();
     _debounce = Timer(debounce, () {
       // Guard against refetch storms: never invalidate while a fetch is
-      // already in flight.
-      final installed = ref.read(unifiedInstalledProvider);
+      // already in flight. The result provider owns the fetch, so the
+      // guard reads it — and invalidation targets it too: invalidating
+      // the projection alone would NOT refetch.
+      final installed = ref.read(unifiedInstalledResultProvider);
       if (installed.isLoading ||
           installed.isRefreshing ||
           installed.isReloading) {
         return;
       }
-      ref.invalidate(unifiedInstalledProvider);
+      ref.invalidate(unifiedInstalledResultProvider);
     });
   }
 

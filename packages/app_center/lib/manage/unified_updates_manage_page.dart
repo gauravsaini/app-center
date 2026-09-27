@@ -37,6 +37,11 @@ class UnifiedUpdatesManagePage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
     final installed = ref.watch(unifiedInstalledProvider);
+    // Quiet partial caption (same as UnifiedManagePage): a hung/excluded
+    // backend marks the result partial and the list may be incomplete.
+    final isPartial =
+        ref.watch(unifiedInstalledResultProvider).valueOrNull?.isPartial ??
+        false;
 
     return RefreshIndicator(
       onRefresh: () => _refreshUpdates(ref),
@@ -73,6 +78,20 @@ class UnifiedUpdatesManagePage extends ConsumerWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
+              // Quiet partial caption: one or more backends didn't
+              // answer this fetch (hung past the budget or threw), so
+              // the list may be incomplete. Mirrors UnifiedManagePage;
+              // no modal, no error styling — the next fetch retries
+              // every backend (parallel-installed.md §6).
+              if (isPartial) ...[
+                const SizedBox(height: kSpacingSmall),
+                Text(
+                  l10n.managePagePartialUpdatesCaption,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               const SizedBox(height: kMarginLarge),
             ],
           ),
@@ -91,7 +110,7 @@ class UnifiedUpdatesManagePage extends ConsumerWidget {
               child: IntrinsicHeight(
                 child: ErrorView(
                   error: error,
-                  onRetry: () => ref.invalidate(unifiedInstalledProvider),
+                  onRetry: () => ref.invalidate(unifiedInstalledResultProvider),
                 ),
               ),
             ),

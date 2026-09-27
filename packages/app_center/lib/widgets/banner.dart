@@ -3,6 +3,7 @@ import 'package:app_center/l10n.dart';
 import 'package:app_center/layout.dart';
 import 'package:app_center/snapd/snapd.dart';
 import 'package:app_center/store/store.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/store/store_pages.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:collection/collection.dart';
@@ -49,7 +50,12 @@ class CategoryBanner extends ConsumerWidget {
       slogan: category.slogan(l10n),
       buttonLabel: category.buttonLabel(l10n),
       onPressed: () {
-        if (displayedCategories.contains(category)) {
+        // The snap-category tiles are hidden when the snap backend is
+        // disabled (docs/architecture/platform-detection.md §6); jumping
+        // by page-controller index would then land on the wrong page, so
+        // fall back to a search push instead.
+        final snapEnabled = ref.read(backendEnabledProvider('snap'));
+        if (snapEnabled && displayedCategories.contains(category)) {
           ref.read(yaruPageControllerProvider).index =
               displayedCategories.indexOf(category) + 1;
         } else {

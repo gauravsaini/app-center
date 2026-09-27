@@ -130,41 +130,35 @@ directory is injectable for tests.
 - Default stays OFF for both `phase3.identity.enabled` and
   `phase3.community.enabled`: explicit opt-in, ADR-010.
 
-### 6. Interface needed from Leaf B (host changes — genuine blocker)
+### 6. Interface from Leaf B (host changes — LANDED)
 
 `CommunityRefreshResult`, `CommunityIndexTransport`, and
-`VerifiedCommunityDoc` are deliberately **not exported** from
-`store_host.dart` ("host-internal plumbing"). The settings UI needs two
-additive changes from Leaf B:
+`VerifiedCommunityDoc` were deliberately not exported from
+`store_host.dart` ("host-internal plumbing"). The settings UI needed
+three additive host changes, all landed on this branch
+(`feat(store-host): export community refresh types + keyId on refresh
+ok`):
 
 1. **Barrel exports** in `packages/store_host/lib/store_host.dart`:
-   ```dart
-   export 'src/identity/community_refresh.dart';
-   export 'src/identity/community_transport.dart';
-   ```
-   Without these the UI cannot name the result type, and — critically —
-   widget tests cannot implement the fake transport the task requires
-   ("refresh button drives fake transport through states to up-to-date").
-2. **Additive `keyId` on `CommunityRefreshResult.ok`**: the signed-by
-   key id display needs it; today `ok` carries entryCount/generatedAt/
-   mirror only. Reading the envelope from the layer file in the UI
-   would duplicate host crypto knowledge — not done.
+   `src/identity/community_refresh.dart` and
+   `src/identity/community_transport.dart` — the minimal pair the
+   Settings UI needs (result types + transport interface for the
+   test seam). No crypto export: the widget ok-path test uses a fake
+   `StoreHost` subclass returning a canned `CommunityRefreshResult.ok`,
+   so no signing or trust-store types leak into the UI layer.
+2. **Additive `keyId` on `CommunityRefreshResult.ok`** (required
+   named param; the host passes `verified.keyId` at its single
+   construction site). The UI shows it as "Signature valid — key
+   `<keyId>`".
 
-Until the exports land, the UI calls `host.refreshCommunityIndex()`
-with **type inference** (no named type — still fully statically typed,
-just unannotated) and no transport override; the signed-by row is
-hidden when `keyId` is null. Once the exports land, follow-ups:
-`communityTransportOverrideProvider` (null in production, scripted fake
-in tests), name the types, and add the ok-path widget test driving the
-fake transport. The notifier state already carries a nullable `keyId`
-field so no UI reshaping is needed.
-
-What this means for testing today: the up-to-date *rendering* is tested
-by seeding the notifier state directly; the end-to-end *failed* path is
-tested with an unreachable `https://127.0.0.1` mirror (deterministic
-connection-refused → `failed` with per-mirror reason, no throw); the
-*skipped* path is tested with community disabled. The fake-transport
-ok-path test is documented pending item 1.
+With the exports in place, the UI names the types directly, and the
+test seams are `communityTransportOverrideProvider` /
+`communityTrustOverrideProvider` (both null in production — the host
+then uses `HttpCommunityIndexTransport` /
+`CommunityTrustStore.bootstrap`; scripted fakes in tests). The
+fake-transport ok-path widget test drives a signed doc through the
+real host: fake transport serves it, ephemeral trust verifies it,
+result `ok` → up-to-date state.
 
 ## Preference reload contract (Leaf B)
 

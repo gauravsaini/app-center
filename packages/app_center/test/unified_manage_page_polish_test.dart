@@ -6,7 +6,6 @@ import 'package:app_center/store/store_operations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:store_contracts/store_contracts.dart';
 import 'package:store_host/store_host.dart';
 import 'package:ubuntu_service/ubuntu_service.dart';
 import 'package:ubuntu_widgets/ubuntu_widgets.dart';
@@ -17,10 +16,11 @@ import 'test_utils.dart';
 /// Widget tests for the unified Manage page polish: toolbar filtering and
 /// sorting, pull-to-refresh, and the operation-terminal auto-refresh.
 ///
-/// The host is faked at the provider boundary: [unifiedInstalledProvider]
-/// is overridden with a call-counting closure (each invocation = one
-/// `StoreHost.installed()` fan-out) and [activeOperationsProvider] with a
-/// scripted stream. Debounces run on the test's fake clock.
+/// The host is faked at the provider boundary: the result provider
+/// ([unifiedInstalledResultProvider]) is overridden with a call-counting
+/// closure (each invocation = one `StoreHost.installedDetailed()`
+/// fan-out; the projection shares it) and [activeOperationsProvider]
+/// with a scripted stream. Debounces run on the test's fake clock.
 void main() {
   tearDown(resetAllServices);
 
@@ -47,10 +47,12 @@ void main() {
     await tester.pumpApp(
       (_) => ProviderScope(
         overrides: [
-          // Each invocation stands in for one StoreHost.installed() call.
-          unifiedInstalledProvider.overrideWith((ref) async {
+          // The result provider owns the fetch: each invocation stands in
+          // for one StoreHost.installedDetailed() fan-out; the projection
+          // shares it.
+          unifiedInstalledResultProvider.overrideWith((ref) async {
             installedCalls++;
-            return apps;
+            return InstalledResult(apps: apps, partialBackendIds: const []);
           }),
           activeOperationsProvider.overrideWith((ref) => ops.stream),
           unifiedManageRefreshDebounceProvider.overrideWithValue(
@@ -231,9 +233,12 @@ void main() {
       await tester.pumpApp(
         (_) => ProviderScope(
           overrides: [
-            unifiedInstalledProvider.overrideWith((ref) {
+            unifiedInstalledResultProvider.overrideWith((ref) {
               installedCalls++;
-              return gate.future;
+              return gate.future.then(
+                (apps) =>
+                    InstalledResult(apps: apps, partialBackendIds: const []),
+              );
             }),
             activeOperationsProvider.overrideWith((ref) => ops.stream),
             unifiedManageRefreshDebounceProvider.overrideWithValue(

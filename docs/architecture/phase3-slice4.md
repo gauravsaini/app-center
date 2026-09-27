@@ -3,6 +3,169 @@
 Leaf-scoped notes for the Phase 3 slice 4 work. Each leaf owns its
 section; the coordinator assembles the merge.
 
+## Settings UI: "App identity" section + community refresh UX (Leaf A)
+
+Companion to `phase3-slice2.md` (§5 UI contract) and `phase3-slice3.md`
+(§4–§5 flags, refresh flow, result type). Covers only what was genuinely
+undecided: where the section lives, the refresh UX states, the toggle-on
+invalidation path, where the last-refresh timestamp persists, and the
+interface Leaf B must provide for the refresh seam.
+
+### 1. Where the section lives: a new "Settings" sidebar page
+
+No settings page existed — `store_pages.dart` had Explore / snap-category
+tiles / Games / Manage / About, and no backend-enable toggles anywhere in
+the UI (`backendEnabledProvider` is nav-visibility only). So there was no
+pattern to follow; one had to be chosen:
+
+- **Chosen: new `SettingsPage` as a sidebar tile**, appended after the
+  About tile in `storePagesProvider`. The page renders one
+  `YaruSection` titled "App identity" (CustomScrollView pattern copied
+  from `AboutPage`). Appending at the end keeps every existing page index
+  stable (`yaruPageControllerProvider` length grows by one, no reorder).
+- Rejected: a gear-icon `/settings` route — there is no existing entry
+  point to hang it on, and the sidebar page is one tile, no route
+  plumbing, no navigator changes.
+- Rejected: putting the section inside About — wrong semantics; About is
+  product info, this is user control.
+
+Settings page files: `packages/app_center/lib/settings/` (`settings_page.dart`,
+`identity_settings.dart` for the section widget + providers,
+`community_refresh_store.dart` for persistence). No `backend_*` imports
+anywhere in the slice — UI sees `store_host`/`store_contracts` only.
+
+### 2. Refresh UX states
+
+`StoreHost.refreshCommunityIndex()` is a single `Future` — the host
+exposes **no per-phase progress** (no callbacks, no stream). So the
+"checking/downloading/verifying" granularity from the task brief cannot
+be driven by real host signals, and faking phased progress would be
+dishonest UI. Decision:
+
+```
+idle → checking → up-to-date | failed(reason) | skipped(reason)
+```
+
+- **checking** is one indeterminate state, labeled "Contacting mirrors…"
+  (never "Downloading 42%" — we don't know).
+- **up-to-date** (result `ok`): entry count + winning mirror + doc
+  `generatedAt` (informational staleness display, per the result-type
+  contract — never a freshness gate).
+- **failed** (result `failed`): the per-mirror error strings from
+  `errorsByMirror`, verbatim. The host contract guarantees they are
+  message-only (no secrets), so verbatim display is safe.
+- **skipped** (result `skipped`): the host's `reason` verbatim
+  (e.g. community disabled, mirrors empty). This is the *expected* state
+  for a fresh install — the section must read sensibly with everything
+  off: toggle off → refresh reports skipped with the gate reason, no
+  error styling, no throw.
+
+The notifier wraps the host call in try/catch → `failed` so a UI-side
+refresh **never throws**, even if the host's never-throws guarantee
+regresses.
+
+### 3. Toggle-on behavior: re-resolve + re-render without restart
+
+`MapFeatureFlags.setFlag` mutates in place and emits on `changes`, but
+Riverpod providers don't watch that stream — `identityEnabledProvider`
+is a sync read of the flags instance. So the toggle handler does:
+
+```dart
+(flags as MapFeatureFlags).setFlag('phase3.identity.enabled', value);
+ref.invalidate(identityEnabledProvider);
+ref.invalidate(unifiedSearchProvider);          // all family instances
+ref.invalidate(unifiedInstalledResultProvider);
+```
+
+This works because the host reads `phase3.identity.enabled` **at call
+time** — Leaf B verified in code above (this doc, "Runtime identity
+toggle") that `search()`/`installedDetailed()` never cache merged
+results across calls. Re-running the search providers re-fans-out over
+the backends with the flag on, the host merges by canonical id, and the
+cards rebuild with `canonicalId` set — no restart, no host rebuild.
+Factored as a top-level `setIdentityEnabled(WidgetRef ref, bool value)`
+so widget tests drive the exact production code path. (Leaf B's note
+says no UI-side invalidation is required *for correctness of the host*;
+the UI-side invalidation here is for *freshness of displayed lists* —
+dropping the providers' cached unmerged results so the new merged
+results are fetched.)
+
+Invalidation scope is deliberately narrow: search + installed listings
+are the only surfaces that merge. Updates (`unifiedUpdatesProvider`)
+don't render merged cards and keep their own refresh lifecycle.
+
+### 4. Last-refresh timestamp: UI-side persistence (decision)
+
+The task offered "a small host-internal store or the preference store
+file". Both are host-owned (Leaf B's lane). Decision: **UI-side
+persistence** — `CommunityRefreshStore` in `lib/settings/`, a tiny JSON
+file at `xdg.dataHome/libreapp-center/community-refresh.json`
+(`~/.local/share/libreapp-center/`, same convention as the host's layer
+files; `xdg_directories` is already a dependency):
+
+```json
+{"lastAttempt": "2026-09-28T01:30:00.000Z", "lastOk": "...",
+ "mirror": "https://...", "entryCount": 128}
+```
+
+Rationale: this is *UI state* ("when did the user last tap refresh and
+what happened"), not host state — and it records failed attempts too,
+which a host layer-file mtime cannot. Load never throws
+(corrupt/missing → null); save is best-effort (never throws). Base
+directory is injectable for tests.
+
+### 5. Honest-copy rules (enforced in review, not just intent)
+
+- Signature row shows **"Signature valid — key `<keyId>`"**, never
+  "verified safe". The explainer states what a signature actually
+  proves: the doc came from the holder of the pinned curator key. It
+  does **not** prove the mappings are correct or safe (slice 3 §8: a
+  compromised curator key can mislabel apps until an app update rotates
+  it; no in-band revocation in v1).
+- The section states the index is **community-curated**, refresh is
+  **manual-only** (no auto-download anywhere — host structural
+  property), and mirrors are operator-set (count shown; no editing UI
+  in this slice — editing an operator trust decision doesn't belong in
+  a v1 settings page).
+- Default stays OFF for both `phase3.identity.enabled` and
+  `phase3.community.enabled`: explicit opt-in, ADR-010.
+
+### 6. Interface needed from Leaf B (host changes — genuine blocker)
+
+`CommunityRefreshResult`, `CommunityIndexTransport`, and
+`VerifiedCommunityDoc` are deliberately **not exported** from
+`store_host.dart` ("host-internal plumbing"). The settings UI needs two
+additive changes from Leaf B:
+
+1. **Barrel exports** in `packages/store_host/lib/store_host.dart`:
+   ```dart
+   export 'src/identity/community_refresh.dart';
+   export 'src/identity/community_transport.dart';
+   ```
+   Without these the UI cannot name the result type, and — critically —
+   widget tests cannot implement the fake transport the task requires
+   ("refresh button drives fake transport through states to up-to-date").
+2. **Additive `keyId` on `CommunityRefreshResult.ok`**: the signed-by
+   key id display needs it; today `ok` carries entryCount/generatedAt/
+   mirror only. Reading the envelope from the layer file in the UI
+   would duplicate host crypto knowledge — not done.
+
+Until the exports land, the UI calls `host.refreshCommunityIndex()`
+with **type inference** (no named type — still fully statically typed,
+just unannotated) and no transport override; the signed-by row is
+hidden when `keyId` is null. Once the exports land, follow-ups:
+`communityTransportOverrideProvider` (null in production, scripted fake
+in tests), name the types, and add the ok-path widget test driving the
+fake transport. The notifier state already carries a nullable `keyId`
+field so no UI reshaping is needed.
+
+What this means for testing today: the up-to-date *rendering* is tested
+by seeding the notifier state directly; the end-to-end *failed* path is
+tested with an unreachable `https://127.0.0.1` mirror (deterministic
+connection-refused → `failed` with per-mirror reason, no throw); the
+*skipped* path is tested with community disabled. The fake-transport
+ok-path test is documented pending item 1.
+
 ## Preference reload contract (Leaf B)
 
 `SourcePreferenceStore` (phase3-slice2.md §4) loaded once per host

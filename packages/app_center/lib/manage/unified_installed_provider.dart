@@ -97,6 +97,9 @@ extension UnifiedManageSourceFilterX on UnifiedManageSourceFilter {
         AppSource.flatpak => UnifiedManageSourceFilter.flatpak,
         AppSource.appImage => UnifiedManageSourceFilter.appImage,
         AppSource.unknown => null,
+        // TODO(wiring): AppSource.rpm needs a dedicated filter chip +
+        // l10n in the wiring slice; until then rpm apps show under "all".
+        AppSource.rpm => null,
       };
 }
 

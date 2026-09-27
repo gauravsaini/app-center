@@ -9,9 +9,12 @@ error mapping for `packages/backend_rpm`.
 packages/backend_rpm/
   pubspec.yaml                  # name: backend_rpm, 0.1.0
                                 # deps: store_contracts (path),
-                                #   packagekit ^0.2.7 (D-Bus only —
-                                #   IDs parsed at the seam, never via
-                                #   the client's strict fromString)
+                                #   dbus ^0.7.6 (raw D-Bus — the transport
+                                #   decodes PackageKit methods/signals
+                                #   itself and parses 5-token IDs at the
+                                #   seam; package:packagekit is NOT used:
+                                #   its strict 4-token fromString breaks
+                                #   on the dnf5 wire shape)
                                 # dev_deps: test ^1.25.0
   lib/backend_rpm.dart           # barrel: exports backend.dart, identity.dart
   lib/testing.dart               # StubRpmTransport (NOT in barrel)
@@ -185,13 +188,16 @@ abstract class RpmTransport {
 }
 ```
 
-`RealRpmPackageKitTransport` implements this over `package:packagekit`
-for the D-Bus plumbing only: it reads raw package-id strings from
-`PackageKitPackageEvent`/`PackageKitDetailsEvent` and parses them with
-`RpmPackageId.parse` — it never calls the client's strict 4-token
-`fromString`. Details-dict fields read: `package-id`, `summary`,
-`description`, `license`, `url`, `size` (install size). `download-size`
-is wire-present but unsurfed in MVP (HLD §7).
+`RealRpmPackageKitTransport` implements this over raw `package:dbus`,
+decoding the PackageKit D-Bus methods/signals itself (see §8): it reads
+verbatim 5-token package-id strings straight from the `Package` and
+`Details` signals' value arguments and parses them with
+`RpmPackageId.parse` — it never calls `package:packagekit`'s strict
+4-token `fromString` (which breaks on the dnf5 wire shape before the
+transport could inspect the event). Details-dict fields read:
+`package-id`, `summary`, `description`, `license`, `url`, `size`
+(install size). `download-size` is wire-present but unsurfed in MVP
+(HLD §7).
 
 ## 3. listInstalled algorithm
 

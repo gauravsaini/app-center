@@ -219,6 +219,7 @@
     "packageFormatDebLabel": "Debian packages",
     "packageFormatSnapLabel": "Snap packages",
     "snapActionCancelLabel": "Cancel",
+    "snapActionCancellingLabel": "Cancelling…",
     "snapActionInstallLabel": "Install",
     "snapActionInstalledLabel": "Installed",
     "snapActionInstallingLabel": "Installing",

@@ -12,6 +12,7 @@ library;
 import 'package:app_center/l10n.dart';
 import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/store/store_operations.dart';
+import 'package:app_center/widgets/operation_inflight_controls.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -91,7 +92,7 @@ class _UnifiedInstallButtonState extends ConsumerState<UnifiedInstallButton> {
     }
 
     if (handle != null) {
-      return _InFlightControls(handle: handle);
+      return OperationInFlightControls(handle: handle);
     }
 
     final completed = _completed;
@@ -195,53 +196,6 @@ class _ActionButton extends StatelessWidget {
         },
       ),
     );
-  }
-}
-
-class _InFlightControls extends StatelessWidget {
-  const _InFlightControls({required this.handle});
-
-  final OperationHandle handle;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return StreamBuilder<OperationState>(
-      stream: handle.state,
-      initialData: handle.current,
-      builder: (context, snapshot) {
-        final state = snapshot.data ?? handle.current;
-        return Row(
-          children: [
-            Expanded(child: _ProgressBar(state: state)),
-            IconButton(
-              icon: const Icon(YaruIcons.stop),
-              tooltip: l10n.snapActionCancelLabel,
-              onPressed: handle.cancel,
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.state});
-
-  final OperationState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = state;
-    // Real byte progress when the backend reports it; indeterminate
-    // otherwise — never a fabricated percentage.
-    if (s is Downloading && s.bytesTotal != null && s.bytesTotal! > 0) {
-      return LinearProgressIndicator(
-        value: (s.bytesDone / s.bytesTotal!).clamp(0.0, 1.0),
-      );
-    }
-    return const LinearProgressIndicator();
   }
 }
 

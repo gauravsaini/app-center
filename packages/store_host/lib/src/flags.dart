@@ -104,6 +104,13 @@ class MapFeatureFlags implements FeatureFlags {
     // not a feature. Read at call time, never cached.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'host.probe_cache_ttl_ms': 30000,
+    // Phase 3 cross-format identity
+    // (docs/architecture/phase3-identity-hld.md): true →
+    // StoreHost.resolveIdentity() consults the local identity index;
+    // false (default) → resolveIdentity() always returns null and the
+    // index is never loaded. New foundation, needs dogfooding.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'phase3.identity.enabled': false,
   };
 
   final Map<String, Object> _values;

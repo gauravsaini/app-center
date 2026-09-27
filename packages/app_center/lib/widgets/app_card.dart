@@ -4,6 +4,7 @@ import 'package:app_center/l10n.dart';
 import 'package:app_center/layout.dart';
 import 'package:app_center/ratings/ratings.dart';
 import 'package:app_center/snapd/snapd.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/widgets/small_banner.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:appstream/appstream.dart';
@@ -87,7 +88,7 @@ class AppCard extends StatelessWidget {
          ),
          summary: app.preferred.summary,
          iconUrl: app.preferred.iconUrl.isEmpty ? null : app.preferred.iconUrl,
-         footer: UnifiedInstallButton(app: app),
+         footer: _UnifiedCardFooter(app: app, onTap: onTap),
          onTap: onTap,
        );
 
@@ -134,6 +135,49 @@ class AppCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Footer for a unified-store card.
+///
+/// Renders the preferred variant exactly as today, plus — only on a
+/// Phase 3 merged card (`phase3.identity.enabled` AND a resolved
+/// [UnifiedApp.canonicalId] AND several variants) — a compact "N
+/// formats" chip that opens the details page's format picker. The picker
+/// itself lives on the details page, never on the card.
+///
+/// Flag off or unresolved → the install button alone, exactly as today.
+class _UnifiedCardFooter extends ConsumerWidget {
+  const _UnifiedCardFooter({required this.app, this.onTap});
+
+  final UnifiedApp app;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final action = UnifiedInstallButton(app: app);
+    final merged =
+        ref.watch(identityEnabledProvider) &&
+        app.canonicalId != null &&
+        app.variants.length > 1;
+    if (!merged) return action;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        action,
+        ActionChip(
+          label: Text(
+            AppLocalizations.of(context).unifiedAppFormatsChip(
+              app.variants.length,
+            ),
+          ),
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+        ),
+      ],
     );
   }
 }

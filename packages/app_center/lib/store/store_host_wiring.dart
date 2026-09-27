@@ -45,6 +45,18 @@ final backendEnabledProvider = Provider.family<bool, String>(
   name: 'backendEnabledProvider',
 );
 
+/// Kill switch for the Phase 3 merged-card UI (`phase3.identity.enabled`).
+///
+/// The merged card (format picker on the details page, "N formats" chip on
+/// the grid card) renders only when this is true AND the app carries a
+/// canonical id — flag off or unresolved keeps today's per-backend UI bit
+/// for bit. Follows the [backendEnabledProvider] pattern: a sync flag read,
+/// no async probing.
+final identityEnabledProvider = Provider<bool>(
+  (ref) => ref.watch(storeFlagsProvider).isEnabled('phase3.identity.enabled'),
+  name: 'identityEnabledProvider',
+);
+
 /// Builds the app-wide [StoreHost] with every backend registered.
 ///
 /// Detect → seed → construct → register: [detectPlatform] runs first

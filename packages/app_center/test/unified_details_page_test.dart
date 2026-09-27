@@ -171,6 +171,144 @@ void main() {
     );
   });
 
+  /// Merged-card fixture: two variants of one canonical app. The snap
+  /// variant is installed with a known size; the deb variant has no size
+  /// (unknown — never fabricated) and is not installed.
+  UnifiedApp mergedTestApp() {
+    const snapId = AppIdentity(backendId: 'snap', nativeId: 'test-snap');
+    const debId = AppIdentity(backendId: 'deb', nativeId: 'test-deb');
+    return const UnifiedApp(
+      groupId: 'appstream:org.test.app',
+      canonicalId: CanonicalAppId(
+        CanonicalIdScheme.appstream,
+        'org.test.app',
+      ),
+      variants: [
+        AppInfo(
+          identity: snapId,
+          name: 'Test Snap',
+          summary: 'a test snap',
+          iconUrl: '',
+          source: AppSource.snap,
+          version: '1.0',
+          installedVersion: '1.0',
+          installSizeBytes: 42 * 1024 * 1024,
+        ),
+        AppInfo(
+          identity: debId,
+          name: 'test-deb',
+          summary: 'a test deb',
+          iconUrl: '',
+          source: AppSource.deb,
+          version: '2.0',
+        ),
+      ],
+    );
+  }
+
+  Future<void> pumpMergedDetails(
+    WidgetTester tester, {
+    required StoreHost host,
+    bool identityFlag = true,
+  }) {
+    return tester.pumpApp(
+      (_) => ProviderScope(
+        overrides: [
+          storeHostProvider.overrideWithValue(host),
+          if (identityFlag)
+            storeFlagsProvider.overrideWithValue(
+              MapFeatureFlags({'phase3.identity.enabled': true}),
+            ),
+        ],
+        child: UnifiedDetailsPage(
+          identity: const AppIdentity(backendId: 'snap', nativeId: 'test-snap'),
+          app: mergedTestApp(),
+        ),
+      ),
+    );
+  }
+
+  testWidgets('flag on + merged app: picker shows rich format chips', (
+    tester,
+  ) async {
+    await pumpMergedDetails(tester, host: stubHost());
+    await tester.pumpAndSettle();
+
+    // One chip per variant, in host order, with the version on each.
+    expect(find.text('1.0'), findsOneWidget);
+    expect(find.text('2.0'), findsOneWidget);
+
+    // Known size humanized on the snap chip...
+    final ctx = tester.element(find.byType(UnifiedDetailsPage));
+    final sizeText = ctx.formatByteSize(42 * 1024 * 1024);
+    final snapChip = find.ancestor(
+      of: find.text('1.0'),
+      matching: find.byType(ChoiceChip),
+    );
+    expect(
+      find.descendant(of: snapChip, matching: find.text(sizeText)),
+      findsOneWidget,
+    );
+    // ...omitted (never fabricated) on the deb chip...
+    final debChip = find.ancestor(
+      of: find.text('2.0'),
+      matching: find.byType(ChoiceChip),
+    );
+    expect(
+      find.descendant(of: debChip, matching: find.text(sizeText)),
+      findsNothing,
+    );
+    // ...and the installed variant carries the check icon.
+    expect(
+      find.descendant(of: snapChip, matching: find.byIcon(YaruIcons.ok)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: debChip, matching: find.byIcon(YaruIcons.ok)),
+      findsNothing,
+    );
+  });
+
+  testWidgets('picking a merged variant persists the source preference', (
+    tester,
+  ) async {
+    final app = mergedTestApp();
+    final host = _RecordingHost({for (final v in app.variants) v.identity: v});
+    await pumpMergedDetails(tester, host: host);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Deb'));
+    await tester.pumpAndSettle();
+
+    // The pick is written through the host seam: (canonical id, backend).
+    expect(host.preferences, [
+      (
+        id: CanonicalAppId.parse('appstream:org.test.app'),
+        backendId: 'deb',
+      ),
+    ]);
+    // ...and the picker selection follows the pick (deb card shown).
+    expect(find.text('test-deb'), findsOneWidget);
+  });
+
+  testWidgets('flag off: canonical id keeps the legacy switcher', (
+    tester,
+  ) async {
+    await pumpMergedDetails(tester, host: stubHost(), identityFlag: false);
+    await tester.pumpAndSettle();
+
+    // Badge-only chips, bit for bit today's UI: no versions, no sizes,
+    // no installed check on the chips.
+    expect(find.text('Deb'), findsOneWidget);
+    expect(find.text('1.0'), findsNothing);
+    expect(find.text('2.0'), findsNothing);
+
+    // Local selection still works without the flag.
+    await tester.tap(find.text('Deb'));
+    await tester.pumpAndSettle();
+    expect(find.text('test-deb'), findsOneWidget);
+  });
+
   /// Pumps [SearchPage] inside a route-recording app, taps [tapText],
   /// and returns every pushed route name.
   Future<List<String>> pumpSearchAndTap(
@@ -341,4 +479,32 @@ void main() {
     }
     expect(find.byIcon(YaruIcons.ok), findsOneWidget);
   });
+}
+
+/// Test double for the host seam the format picker persists through:
+/// records [setPreferredSource] calls instead of touching the real
+/// preference file, and serves canned details so the page never hits
+/// the error path. Everything else is the real [StoreHost].
+class _RecordingHost extends StoreHost {
+  _RecordingHost(this._apps) : super(flags: MapFeatureFlags());
+
+  final Map<AppIdentity, AppInfo> _apps;
+  final preferences = <({CanonicalAppId id, String backendId})>[];
+
+  @override
+  Future<void> setPreferredSource(CanonicalAppId id, String backendId) async {
+    preferences.add((id: id, backendId: backendId));
+  }
+
+  @override
+  Future<AppDetails> getDetails(AppIdentity app) async {
+    final info = _apps[app];
+    if (info == null) {
+      throw BackendUnavailableException(
+        debugDetail: 'unknown test identity: ${app.backendId}:${app.nativeId}',
+        backendId: app.backendId,
+      );
+    }
+    return AppDetails(app: info, description: 'test description');
+  }
 }

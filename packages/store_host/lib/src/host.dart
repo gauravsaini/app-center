@@ -823,6 +823,7 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
         entryCount: entries is List ? entries.length : 0,
         generatedAt: verified.generatedAt,
         mirror: mirror,
+        keyId: verified.keyId,
       );
     }
     return CommunityRefreshResult.failed(errors);

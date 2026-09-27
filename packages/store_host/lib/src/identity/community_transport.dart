@@ -1,11 +1,12 @@
 /// Fetch seam for the community identity index
 /// (docs/architecture/phase3-slice3.md §4–§5).
 ///
-/// Host-internal plumbing: not exported from `store_host.dart`. The
-/// injectable [CommunityIndexTransport] keeps the network out of the
-/// refresh unit tests; [HttpCommunityIndexTransport] is the production
-/// vehicle. Failures surface only as [CommunityFetchException] — a
-/// message naming the mirror, never a secret.
+/// The injectable [CommunityIndexTransport] keeps the network out of
+/// the refresh unit tests — and out of the Settings UI's widget tests
+/// (docs/architecture/phase3-slice4.md §6);
+/// [HttpCommunityIndexTransport] is the production vehicle. Failures
+/// surface only as [CommunityFetchException] — a message naming the
+/// mirror, never a secret.
 library;
 
 import 'dart:async';

@@ -15,7 +15,6 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:store_host/src/identity/community_crypto.dart';
-import 'package:store_host/src/identity/community_transport.dart';
 import 'package:store_host/store_host.dart';
 import 'package:test/test.dart';
 

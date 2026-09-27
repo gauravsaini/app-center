@@ -6,7 +6,8 @@
 /// maintenance action, and "all mirrors down" is an expected outcome,
 /// not an exceptional one.
 ///
-/// Host-internal plumbing: not exported from `store_host.dart`.
+/// Exported for the Settings UI's community refresh controls
+/// (docs/architecture/phase3-slice4.md §6).
 library;
 
 /// Outcome of a community index refresh. Exactly one of [isOk],
@@ -18,6 +19,7 @@ class CommunityRefreshResult {
     required this.entryCount,
     required this.generatedAt,
     required this.mirror,
+    required this.keyId,
   }) : _kind = _RefreshKind.ok,
        reason = null,
        errorsByMirror = const {};
@@ -28,6 +30,7 @@ class CommunityRefreshResult {
       entryCount = 0,
       generatedAt = null,
       mirror = null,
+      keyId = null,
       errorsByMirror = const {};
 
   /// Every mirror failed: the previous community file (if any) and
@@ -37,6 +40,7 @@ class CommunityRefreshResult {
       entryCount = 0,
       generatedAt = null,
       mirror = null,
+      keyId = null,
       reason = null;
 
   final _RefreshKind _kind;
@@ -54,6 +58,11 @@ class CommunityRefreshResult {
 
   /// The mirror URL whose doc won. Set on [ok], null otherwise.
   final String? mirror;
+
+  /// The pinned curator keyId whose signature verified the winning
+  /// doc. Set on [ok] (never null there), null otherwise. Displayed
+  /// by the settings UI as "signature valid — key <keyId>".
+  final String? keyId;
 
   /// Why no fetch was attempted. Set on [skipped], null otherwise.
   final String? reason;

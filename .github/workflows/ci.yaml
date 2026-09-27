@@ -68,7 +68,9 @@ jobs:
           done
 
       - name: Run TICS analysis
-        if: github.event_name == 'push'
+        # TICS needs Canonical's internal QServer token; forks don't have it.
+        # Skip silently instead of failing the whole CI job on main.
+        if: github.event_name == 'push' && secrets.TICSAUTHTOKEN != ''
         uses: tiobe/tics-github-action@v3
         with:
           mode: qserver

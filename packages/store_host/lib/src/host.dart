@@ -768,6 +768,12 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
       } on CommunitySignatureException catch (e) {
         errors[mirror] = 'signature rejected: ${e.message}';
         continue;
+      } on Exception catch (e) {
+        // verifyCommunityDoc only throws CommunitySignatureException
+        // by contract, but a mirror's doc must never take the refresh
+        // down with an unexpected exception either.
+        errors[mirror] = 'signature rejected: $e';
+        continue;
       }
       try {
         // Verify-before-write: the previous community file is only

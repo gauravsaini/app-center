@@ -249,7 +249,7 @@ cached for the host's lifetime — no reload API". Same class as slice
 /// [resolveIdentity] call reloads from disk (seed + community layer +
 /// local overlay). Never throws: worst case the next load yields the
 /// seed-only index (FileIdentityIndexStore.load never throws).
-Future<void> StoreHost.reloadIdentityIndex();
+void StoreHost.reloadIdentityIndex();
 ```
 
 - `refreshCommunityIndex()` calls it internally after a verified swap,

@@ -65,15 +65,15 @@ void main() {
     expect(container.read(backendEnabledProvider('snap')), isFalse);
     expect(container.read(backendEnabledProvider('flatpak')), isTrue);
     expect(container.read(backendEnabledProvider('deb')), isTrue);
-    // The filter follows the same flag: 8 tiles today, 5 without snap.
-    expect(container.read(storePagesProvider).length, 5);
+    // The filter follows the same flag: 9 tiles today, 6 without snap.
+    expect(container.read(storePagesProvider).length, 6);
   });
 
   test('backendEnabledProvider is all-on with default flags', () {
     final container = createContainer();
 
     expect(container.read(backendEnabledProvider('snap')), isTrue);
-    expect(container.read(storePagesProvider).length, 8);
+    expect(container.read(storePagesProvider).length, 9);
   });
 
   testWidgets(

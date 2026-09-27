@@ -117,8 +117,9 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
 
   /// Lazy Phase 3 source-preference store (phase3-slice2.md §4): the
   /// user's per-app remembered source choice (HLD §6 rule 2). Built on
-  /// first use and cached for the host's lifetime — slice 2 has no
-  /// reload API.
+  /// first use and cached for the host's lifetime — reloadable via
+  /// [reloadSourcePreferences] (phase3-slice4.md). The load never
+  /// throws (corrupt/missing file → empty preferences).
   SourcePreferenceStore? _preferenceStore;
 
   /// Register a backend plugin. Called once at the composition root
@@ -377,14 +378,30 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// verbatim — an id no backend recognizes is kept and ignored at
   /// ordering time. Survives restarts via
   /// `~/.local/share/libreapp-center/source-preferences.json`.
+  ///
+  /// Write-through AND in-memory atomic: the in-memory cache updates
+  /// before the disk write, so a subsequent [getPreferredSource] (or
+  /// any merge) sees the new value immediately — no [reloadSourcePreferences]
+  /// needed. If the disk write fails, the [StateError] still propagates
+  /// (disk full, permission denied) but the in-memory value stands:
+  /// the current process stays consistent; the next process start
+  /// re-reads from disk.
   Future<void> setPreferredSource(CanonicalAppId id, String backendId) async {
     final store = await _preferences();
     await store.setPreferred(id.toString(), backendId);
   }
 
+  /// The remembered backend for [id], or null when the user picked
+  /// nothing (phase3-slice4.md). Reads from the in-memory cache —
+  /// reflects the latest [setPreferredSource] call without any reload.
+  Future<String?> getPreferredSource(CanonicalAppId id) async {
+    final store = await _preferences();
+    return store.preferenceFor(id.toString());
+  }
+
   /// Lazy source-preference store, built on first use and cached for
-  /// the host's lifetime (slice 2: no reload API). The load never
-  /// throws (corrupt/missing file → empty preferences).
+  /// the host's lifetime, reloadable via [reloadSourcePreferences].
+  /// The load never throws (corrupt/missing file → empty preferences).
   Future<SourcePreferenceStore> _preferences() async {
     var store = _preferenceStore;
     if (store == null) {
@@ -393,6 +410,23 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
       _preferenceStore = store;
     }
     return store;
+  }
+
+  /// Drops the cached source-preference store
+  /// (docs/architecture/phase3-slice4.md §"Preference reload
+  /// contract"). The next [getPreferredSource] / merge call rebuilds
+  /// the store from disk — external edits to the preferences file
+  /// become visible without a host restart. The index cache is
+  /// untouched: preferences survive [reloadIdentityIndex] and vice
+  /// versa.
+  ///
+  /// Reload contract (same shape as [reloadIdentityIndex]): the swap
+  /// replaces the immutable [SourcePreferenceStore] reference, so
+  /// in-flight merges finish on the old store (no tearing, no locks).
+  /// Never throws: worst case the next load yields empty preferences
+  /// ([SourcePreferenceStore.load] never throws).
+  void reloadSourcePreferences() {
+    _preferenceStore = null;
   }
 
   /// Detailed installed listing: parallel fan-out over every enabled
@@ -789,6 +823,7 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
         entryCount: entries is List ? entries.length : 0,
         generatedAt: verified.generatedAt,
         mirror: mirror,
+        keyId: verified.keyId,
       );
     }
     return CommunityRefreshResult.failed(errors);

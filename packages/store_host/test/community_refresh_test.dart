@@ -15,7 +15,6 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:store_host/src/identity/community_crypto.dart';
-import 'package:store_host/src/identity/community_transport.dart';
 import 'package:store_host/store_host.dart';
 import 'package:test/test.dart';
 
@@ -291,6 +290,8 @@ void main() {
       expect(result.entryCount, 1);
       expect(result.generatedAt, DateTime.utc(2026, 9, 28));
       expect(result.mirror, _m2);
+      // The ok result carries the signing key id the UI displays.
+      expect(result.keyId, keyId);
 
       // The verified doc was written to the community layer file.
       final file = File(_communityPath(home));

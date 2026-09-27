@@ -220,6 +220,7 @@
     "packageFormatSnapLabel": "Snap packages",
     "snapActionCancelLabel": "Cancel",
     "snapActionCancellingLabel": "Cancelling…",
+    "stalledLabel": "Stalled",
     "snapActionInstallLabel": "Install",
     "snapActionInstalledLabel": "Installed",
     "snapActionInstallingLabel": "Installing",

@@ -2,6 +2,7 @@ import 'package:app_center/store/store_host_wiring.dart';
 import 'package:backend_appimage/testing.dart';
 import 'package:backend_deb/testing.dart';
 import 'package:backend_flatpak/testing.dart';
+import 'package:backend_rpm/testing.dart';
 import 'package:backend_snap/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:store_host/store_host.dart';
@@ -144,13 +145,44 @@ void main() {
       // The §3 seed table: an apt/dpkg backend can never be honest on an
       // rpm system, and snapd is Ubuntu-canonical. Flatpak is
       // distro-agnostic (unchanged); appimage stays dogfooding-gated.
+      // rpm is NOT auto-enabled on fedora-like systems — a separate,
+      // deferred decision (rpm-backend-hld.md §5); default off holds.
       expect(flags.isEnabled('backend.snap.enabled'), isFalse);
       expect(flags.isEnabled('backend.deb.enabled'), isFalse);
       expect(flags.isEnabled('backend.flatpak.enabled'), isTrue);
       expect(flags.isEnabled('backend.appimage.enabled'), isFalse);
+      expect(flags.isEnabled('backend.rpm.enabled'), isFalse);
 
       final backends = await host.enabledBackends();
       expect(backends.map((b) => b.id).toList(), ['flatpak']);
+    },
+  );
+
+  test(
+    'wiring: rpm registered dark by default, flag-on surfaces it',
+    () async {
+      final flags = MapFeatureFlags();
+      final host = buildStoreHost(
+        flags,
+        platformOverride: _fedora,
+        snapTransport: StubSnapdTransport(),
+        flatpakTransport: StubFlatpakTransport(),
+        debTransport: StubPackageKitTransport(),
+        appimageTransport: StubAppimageTransport(),
+        rpmTransport: StubRpmTransport(),
+      );
+
+      // Ships dark on every platform until the fedora-like auto-enable
+      // decision lands (rpm-backend-hld.md §5).
+      expect(flags.isEnabled('backend.rpm.enabled'), isFalse);
+      final dark = await host.enabledBackends();
+      expect(dark.map((b) => b.id), isNot(contains('rpm')));
+
+      // Operator flip: the registered backend answers flag reads and
+      // probes like any other backend.
+      flags.setFlag('backend.rpm.enabled', true);
+      final backends = await host.enabledBackends();
+      expect(backends.map((b) => b.id).toList(), ['flatpak', 'rpm']);
     },
   );
 

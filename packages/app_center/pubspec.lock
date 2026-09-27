@@ -109,6 +109,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  backend_rpm:
+    dependency: "direct main"
+    description:
+      path: "../backend_rpm"
+      relative: true
+    source: path
+    version: "0.1.0"
   backend_snap:
     dependency: "direct main"
     description:

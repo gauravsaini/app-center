@@ -80,6 +80,15 @@ class MapFeatureFlags implements FeatureFlags {
     // Default off: new backend, needs dogfooding.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'backend.appimage.enabled': false,
+    // Kill switch for the RPM backend plugin: false → backend excluded
+    // from fan-outs and enqueue throws BackendUnavailableException; the
+    // backend is still registered (registration is unconditional — the
+    // flag is the filter).
+    // Default off: new backend, needs dogfooding. Platform seeding that
+    // enables this on fedora-like systems is a separate, deferred
+    // decision (docs/architecture/rpm-backend-hld.md §5).
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'backend.rpm.enabled': false,
     // isAvailable() memoization TTL
     // (docs/architecture/platform-detection.md §4): 30s. <= 0 disables
     // caching entirely — a cache you can disable is a debugging tool,

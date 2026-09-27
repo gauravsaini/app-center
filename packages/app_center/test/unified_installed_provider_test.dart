@@ -165,6 +165,7 @@ void main() {
         UnifiedManageSourceFilter.appImage.appSource,
         AppSource.appImage,
       );
+      expect(UnifiedManageSourceFilter.rpm.appSource, AppSource.rpm);
       expect(UnifiedManageSourceFilter.all.appSource, isNull);
     });
 

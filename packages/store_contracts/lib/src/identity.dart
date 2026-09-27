@@ -30,7 +30,7 @@ class AppIdentity {
 
 /// Which packaging format an app came from. Used for badges and the
 /// format picker — never for ranking on its own.
-enum AppSource { snap, deb, flatpak, appImage, unknown }
+enum AppSource { snap, deb, flatpak, appImage, rpm, unknown }
 
 /// A sandbox permission, shown BEFORE install (ADR-009: trust is designed,
 /// not documented). Empty list = backend cannot report permissions.

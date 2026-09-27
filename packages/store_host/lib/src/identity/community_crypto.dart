@@ -211,19 +211,24 @@ class VerifiedCommunityDoc {
 /// Steps:
 /// 1. [raw] must contain a `signature` object — unsigned docs never
 ///    merge (missing → throw).
-/// 2. Parse the envelope ([CommunitySignature.parse]).
-/// 3. `algorithm` must be exactly `'ed25519'`.
-/// 4. `sig` must base64-decode to 64 bytes.
-/// 5. `keyId` must be pinned in [trust]; the pinned key must
+/// 2. When [expectedDocType] is non-null, `docType` must equal it — a
+///    mirror can't cross-serve docs (e.g. the identity doc on the
+///    metadata path). Null (default) preserves the slice-3 callers,
+///    which serve docs without a `docType` discriminator.
+/// 3. Parse the envelope ([CommunitySignature.parse]).
+/// 4. `algorithm` must be exactly `'ed25519'`.
+/// 5. `sig` must base64-decode to 64 bytes.
+/// 6. `keyId` must be pinned in [trust]; the pinned key must
 ///    base64-decode to 32 bytes.
-/// 6. Verify Ed25519 over `canonicalJsonBytes(raw minus envelope)`.
+/// 7. Verify Ed25519 over `canonicalJsonBytes(raw minus envelope)`.
 ///
 /// Any failure throws [CommunitySignatureException]. Success returns
 /// [VerifiedCommunityDoc] with the envelope stripped, ready to merge.
 Future<VerifiedCommunityDoc> verifyCommunityDoc(
   Map<String, Object?> raw,
-  CommunityTrustStore trust,
-) async {
+  CommunityTrustStore trust, {
+  String? expectedDocType,
+}) async {
   // Copy minus the envelope so canonicalization never sees it.
   final doc = Map<String, Object?>.of(raw);
   final envelopeJson = doc.remove('signature');
@@ -231,6 +236,15 @@ Future<VerifiedCommunityDoc> verifyCommunityDoc(
     throw const CommunitySignatureException(
       'Community doc rejected: unsigned docs never merge (missing '
       '`signature` object)',
+    );
+  }
+
+  if (expectedDocType != null && doc['docType'] != expectedDocType) {
+    final found = doc['docType'];
+    throw CommunitySignatureException(
+      'Community doc rejected: cross-served doc — expected docType '
+      "'$expectedDocType', found "
+      '${found is String ? "'$found'" : 'missing/non-string docType'}',
     );
   }
 

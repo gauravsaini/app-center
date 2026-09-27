@@ -20,6 +20,7 @@ import 'package:store_contracts/store_contracts.dart';
 
 import 'check_updates_result.dart';
 import 'identity/community_crypto.dart';
+import 'identity/community_metadata.dart';
 import 'identity/community_refresh.dart';
 import 'identity/community_transport.dart';
 import 'identity/file_identity_index.dart';
@@ -121,6 +122,20 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// [reloadSourcePreferences] (phase3-slice4.md). The load never
   /// throws (corrupt/missing file → empty preferences).
   SourcePreferenceStore? _preferenceStore;
+
+  /// Lazy community metadata store (phase3-slice5.md). Built on the
+  /// first [getCommunityMetadata] call and cached for the host's
+  /// lifetime — [reloadCommunityMetadata] drops the cache so the next
+  /// call rebuilds from disk. Independent of [reloadIdentityIndex] and
+  /// [reloadSourcePreferences]: neither clobbers the other. Reads ONLY
+  /// the post-verification file written by [refreshCommunityMetadata] —
+  /// unverified metadata is never displayed or returned.
+  CommunityMetadataStore? _metadataStore;
+
+  /// 10 MiB body cap for the community metadata refresh
+  /// (phase3-slice5.md §2): a mirror serving a multi-GB doc must not
+  /// OOM the host. Enforced before parsing.
+  static const _metadataMaxBodyBytes = 10 * 1024 * 1024;
 
   /// Register a backend plugin. Called once at the composition root
   /// (the app's `main.dart`) — never from UI pages.
@@ -648,6 +663,15 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     IdentitySignal? signals,
   ]) async {
     if (!_flags.isEnabled('phase3.identity.enabled')) return null;
+    return (await _identity()).resolve(id, signals);
+  }
+
+  /// Lazy identity index + resolver, shared by [resolveIdentity] and
+  /// [getCommunityMetadata] (the metadata lookup follows the index's
+  /// alias chain — phase3-slice5.md §1). Built on first use and
+  /// cached for the host's lifetime; [reloadIdentityIndex] drops the
+  /// cache. Never built when `phase3.identity.enabled` is false.
+  Future<IdentityResolver> _identity() async {
     var resolver = _identityResolver;
     if (resolver == null) {
       _identityIndex = await FileIdentityIndexStore().load(
@@ -661,7 +685,214 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
       );
       _identityResolver = resolver;
     }
-    return resolver.resolve(id, signals);
+    return resolver;
+  }
+
+  /// Community metadata lookup (phase3-slice5.md).
+  ///
+  /// Null unless `phase3.identity.enabled` AND `phase3.metadata.enabled`
+  /// AND an entry exists for [id] (alias-followed through the identity
+  /// index's 8-hop chain, so metadata keyed by a retired `homepage:`
+  /// id is still found). The metadata cache loads lazily on first
+  /// call; never throws (worst case: null).
+  ///
+  /// Only the post-verification file (written by
+  /// [refreshCommunityMetadata]) is ever read — unverified metadata is
+  /// never displayed or returned.
+  Future<CommunityAppMetadata?> getCommunityMetadata(CanonicalAppId id) async {
+    if (!_flags.isEnabled('phase3.identity.enabled')) return null;
+    if (!_flags.isEnabled('phase3.metadata.enabled')) return null;
+    final store = await _metadata();
+    final index = (await _identity()).index;
+    return store.entryFor(id, index);
+  }
+
+  /// Lazy community metadata store, built on first [getCommunityMetadata]
+  /// call and cached for the host's lifetime, reloadable via
+  /// [reloadCommunityMetadata]. The load never throws (corrupt/missing
+  /// file → empty metadata).
+  Future<CommunityMetadataStore> _metadata() async {
+    var store = _metadataStore;
+    if (store == null) {
+      store = CommunityMetadataStore();
+      await store.load(paths: _metadataPaths());
+      _metadataStore = store;
+    }
+    return store;
+  }
+
+  /// Drops the cached community metadata
+  /// (docs/architecture/phase3-slice5.md §2). The next
+  /// [getCommunityMetadata] call rebuilds the store from disk — edits
+  /// to the metadata file become visible without a host restart. The
+  /// identity index and the preference store are untouched: metadata
+  /// survives [reloadIdentityIndex] and [reloadSourcePreferences] and
+  /// vice versa.
+  ///
+  /// Reload contract (same shape as [reloadIdentityIndex]): the swap
+  /// replaces the immutable [CommunityMetadataStore] reference, so
+  /// in-flight lookups finish on the old store (no tearing, no locks).
+  /// Never throws: worst case the next load yields empty metadata
+  /// ([CommunityMetadataStore.load] never throws).
+  void reloadCommunityMetadata() {
+    _metadataStore = null;
+  }
+
+  /// Metadata file for the lazy community metadata store
+  /// (phase3-slice5.md §2): the operator-fetched, signature-verified
+  /// `community-metadata` doc lives here — written ONLY by
+  /// [refreshCommunityMetadata], after verification with
+  /// `expectedDocType: 'community-metadata'`. Null when `HOME` is
+  /// absent: refresh then reports `skipped`, and lookups see no
+  /// metadata.
+  static String? _metadataFilePath({required Map<String, String> environment}) {
+    final home = environment['HOME'];
+    if (home == null || home.isEmpty) return null;
+    return '$home/.local/share/libreapp-center/identity-metadata.json';
+  }
+
+  /// Metadata file paths for the lazy community metadata store: the
+  /// fetched file above, or empty when `HOME` is absent (no metadata
+  /// file).
+  List<String> _metadataPaths() {
+    final path = _metadataFilePath(environment: _environment);
+    return path == null ? const [] : [path];
+  }
+
+  /// Fetches, verifies, and installs the community metadata doc
+  /// (docs/architecture/phase3-slice5.md §2).
+  ///
+  /// The flow: gate (identity enabled + metadata enabled + community
+  /// enabled + metadata mirrors non-empty + `HOME` present, else
+  /// `skipped`) → per mirror (https-only, 10 MiB body cap before
+  /// parse): fetch → parse JSON object → verify the Ed25519 signature
+  /// envelope with `expectedDocType: 'community-metadata'` (a mirror
+  /// can't cross-serve the identity doc) → atomic write (temp +
+  /// rename) to the metadata file → [reloadCommunityMetadata] → `ok`.
+  /// All mirrors fail → `failed` with per-mirror error strings; the
+  /// previous metadata file (if any) and the in-memory cache are
+  /// untouched.
+  ///
+  /// Explicit-only: nothing in the host ever calls this on a timer or
+  /// at startup — there is no automatic download anywhere. Never
+  /// throws: "all mirrors down" is an expected outcome, reported as
+  /// `failed`, not an exception.
+  Future<CommunityMetadataRefreshResult> refreshCommunityMetadata({
+    CommunityIndexTransport? transport,
+    CommunityTrustStore trust = CommunityTrustStore.bootstrap,
+  }) async {
+    if (!_flags.isEnabled('phase3.identity.enabled')) {
+      return const CommunityMetadataRefreshResult.skipped(
+        'phase3.identity.enabled is false',
+      );
+    }
+    if (!_flags.isEnabled('phase3.metadata.enabled')) {
+      return const CommunityMetadataRefreshResult.skipped(
+        'phase3.metadata.enabled is false',
+      );
+    }
+    if (!_flags.isEnabled('phase3.community.enabled')) {
+      return const CommunityMetadataRefreshResult.skipped(
+        'phase3.community.enabled is false',
+      );
+    }
+    final mirrors = _flags
+        .getString('phase3.community.metadata.mirrors')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (mirrors.isEmpty) {
+      return const CommunityMetadataRefreshResult.skipped(
+        'phase3.community.metadata.mirrors is empty — no fetch, ever',
+      );
+    }
+    final metadataPath = _metadataFilePath(environment: _environment);
+    if (metadataPath == null) {
+      return const CommunityMetadataRefreshResult.skipped(
+        'HOME is not set — no metadata file location',
+      );
+    }
+
+    final fetcher = transport ?? HttpCommunityIndexTransport();
+    final errors = <String, String>{};
+    for (final mirror in mirrors) {
+      final uri = Uri.tryParse(mirror);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        errors[mirror] = 'skipped: only https:// mirror URLs are accepted';
+        continue;
+      }
+      final String body;
+      try {
+        body = await fetcher.fetch(uri);
+      } on CommunityFetchException catch (e) {
+        errors[mirror] = 'fetch failed: ${e.message}';
+        continue;
+      } catch (e) {
+        // A transport that throws something else must not take the
+        // refresh down with it either.
+        errors[mirror] = 'fetch failed: $e';
+        continue;
+      }
+      // 10 MiB body cap BEFORE parsing: a mirror serving a multi-GB
+      // doc must not OOM the host. Measured in UTF-8 bytes (the wire
+      // unit). The shared transport is unchanged; the cap lives on
+      // this path because the threat is new here (§2).
+      if (utf8.encode(body).length > _metadataMaxBodyBytes) {
+        errors[mirror] =
+            'rejected: body exceeds the 10 MiB size cap (not parsed)';
+        continue;
+      }
+      final Map<String, Object?> raw;
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map<String, Object?>) {
+          raw = decoded;
+        } else if (decoded is Map) {
+          raw = Map<String, Object?>.from(decoded);
+        } else {
+          errors[mirror] = 'parse failed: not a JSON object';
+          continue;
+        }
+      } on FormatException catch (e) {
+        errors[mirror] = 'parse failed: ${e.message}';
+        continue;
+      }
+      final VerifiedCommunityDoc verified;
+      try {
+        verified = await verifyCommunityDoc(
+          raw,
+          trust,
+          expectedDocType: 'community-metadata',
+        );
+      } on CommunitySignatureException catch (e) {
+        errors[mirror] = 'signature rejected: ${e.message}';
+        continue;
+      } on Exception catch (e) {
+        // verifyCommunityDoc only throws CommunitySignatureException
+        // by contract, but a mirror's doc must never take the refresh
+        // down with an unexpected exception either.
+        errors[mirror] = 'signature rejected: $e';
+        continue;
+      }
+      try {
+        // Verify-before-write: the previous metadata file is only
+        // replaced after a doc FULLY verifies.
+        await _atomicWriteFile(metadataPath, body);
+      } on IOException catch (e) {
+        errors[mirror] = 'write failed: $e';
+        continue;
+      }
+      reloadCommunityMetadata();
+      final metadata = verified.doc['metadata'];
+      return CommunityMetadataRefreshResult.ok(
+        entryCount: metadata is List ? metadata.length : 0,
+        generatedAt: verified.generatedAt,
+        mirror: mirror,
+        keyId: verified.keyId,
+      );
+    }
+    return CommunityMetadataRefreshResult.failed(errors);
   }
 
   /// Overlay paths for the lazy identity index (LLD §5.4): the local

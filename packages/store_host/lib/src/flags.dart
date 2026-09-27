@@ -46,6 +46,11 @@ class MapFeatureFlags implements FeatureFlags {
     // localDebUpdatesModelProvider).
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'pages.updates.unified': false,
+    // Poll interval for the background update check
+    // (docs/architecture/update-polling.md §7): 6h. <= 0 disables
+    // polling. Only consumed when `pages.updates.unified` is true.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'updates.poll_interval_ms': 21600000,
     // Kill switch for the AppImage backend plugin (Phase 1): false →
     // backend never registered, host behaves as if AppImage support
     // does not exist. Default off: new backend, needs dogfooding.

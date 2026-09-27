@@ -70,6 +70,8 @@
         }
     },
     "managePageLabel": "Manage",
+    "unifiedManagePageEmptyTitle": "No apps installed",
+    "unifiedManagePageEmptyDescription": "Apps you install will show up here.",
     "managePageTitle": "Manage installed snaps",
     "managePageNoUpdatesAvailableDescription": "No updates available. Your applications are all up to date.",
     "managePageSearchFieldSearchHint": "Search installed apps",

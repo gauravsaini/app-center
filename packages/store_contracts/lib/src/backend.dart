@@ -92,6 +92,16 @@ abstract class StoreBackend {
   /// with a default, minor version bump).
   Future<List<AppInfo>> listInstalled() => Future.value(const []);
 
+  /// Key used for cross-format identity resolution
+  /// (docs/architecture/phase3-identity-hld.md §5).
+  ///
+  /// This is NOT the card key: identity is arch- and version-agnostic.
+  /// rpm's card key is `name.arch`; its identity key is `name`.
+  /// The default returns [identity.nativeId]; backends whose nativeId
+  /// embeds version/arch/state MUST override.
+  /// Never throws, never returns empty for a valid [identity].
+  String identityLookupKey(AppIdentity identity) => identity.nativeId;
+
   /// Best-effort re-attach to operations the backend reports still
   /// running after an app restart. Re-attached handles start with
   /// the [Restoring] state. Backends that can't do this return [].

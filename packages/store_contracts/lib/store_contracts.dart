@@ -6,6 +6,7 @@
 library store_contracts;
 
 export 'src/backend.dart';
+export 'src/canonical_identity.dart';
 export 'src/catalog.dart';
 export 'src/engine.dart';
 export 'src/errors.dart';

@@ -14,3 +14,5 @@ library backend_rpm;
 
 export 'src/backend.dart';
 export 'src/identity.dart';
+export 'src/packagekit_transport.dart';
+export 'src/transport.dart';

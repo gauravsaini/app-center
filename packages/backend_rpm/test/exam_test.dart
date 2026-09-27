@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:backend_rpm/backend_rpm.dart';
 import 'package:backend_rpm/src/handle.dart';
-import 'package:backend_rpm/src/packagekit_transport.dart';
-import 'package:backend_rpm/src/transport.dart';
 import 'package:backend_rpm/testing.dart';
 import 'package:store_contracts/exam.dart';
 import 'package:store_contracts/store_contracts.dart';

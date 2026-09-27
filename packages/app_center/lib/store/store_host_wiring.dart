@@ -15,6 +15,7 @@ library;
 import 'package:backend_appimage/backend_appimage.dart';
 import 'package:backend_deb/backend_deb.dart';
 import 'package:backend_flatpak/backend_flatpak.dart';
+import 'package:backend_rpm/backend_rpm.dart';
 import 'package:backend_snap/backend_snap.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:store_host/store_host.dart';
@@ -22,7 +23,7 @@ import 'package:store_host/store_host.dart';
 /// App-wide feature flags for the unified store.
 ///
 /// Kill switches: `backend.<id>.enabled` (`snap`, `flatpak`, `deb`,
-/// `appimage`).
+/// `appimage`, `rpm`).
 /// Defaults live in [MapFeatureFlags]; mutated via
 /// [MapFeatureFlags.setFlag] — but only through this single shared
 /// instance.
@@ -32,7 +33,7 @@ final storeFlagsProvider = Provider<FeatureFlags>(
 );
 
 /// Seeded kill switch for one backend id (`snap`, `flatpak`, `deb`,
-/// `appimage`).
+/// `appimage`, `rpm`).
 ///
 /// Sync flag read — nav visibility is a startup decision and must not
 /// await probes (docs/architecture/platform-detection.md §6). The flag
@@ -55,7 +56,8 @@ final backendEnabledProvider = Provider.family<bool, String>(
 ///
 /// The optional transports exist for tests: production always uses the
 /// real transports (`PackageSnapdTransport`, `CliFlatpakTransport`,
-/// `RealPackageKitTransport`, `RealAppImageTransport`).
+/// `RealPackageKitTransport`, `RealAppImageTransport`,
+/// `RealRpmPackageKitTransport`).
 /// Backend availability is checked lazily per query, never here.
 StoreHost buildStoreHost(
   FeatureFlags flags, {
@@ -63,6 +65,7 @@ StoreHost buildStoreHost(
   FlatpakTransport? flatpakTransport,
   PackageKitTransport? debTransport,
   AppImageTransport? appimageTransport,
+  RpmTransport? rpmTransport,
   // Test seams (docs/architecture/platform-detection.md §8): inject a
   // fake platform. Production always passes null and detection runs
   // against /etc/os-release.
@@ -92,6 +95,11 @@ StoreHost buildStoreHost(
   host.registerBackend(
     BackendAppimage(
       transport: appimageTransport ?? RealAppImageTransport(),
+    ),
+  );
+  host.registerBackend(
+    BackendRpm(
+      transport: rpmTransport ?? RealRpmPackageKitTransport(),
     ),
   );
   return host;

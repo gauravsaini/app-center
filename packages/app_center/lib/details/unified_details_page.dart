@@ -178,7 +178,6 @@ class _BackendBadge extends StatelessWidget {
       AppSource.deb => l10n.unifiedDetailsDebBadge,
       AppSource.flatpak => l10n.unifiedDetailsFlatpakBadge,
       AppSource.appImage => 'AppImage',
-      // TODO(wiring): dedicated RPM l10n badge belongs to the wiring slice.
       AppSource.rpm => 'RPM',
       AppSource.unknown || null => '?',
     };
@@ -239,7 +238,6 @@ class _VariantSwitcher extends StatelessWidget {
       AppSource.deb => l10n.unifiedDetailsDebBadge,
       AppSource.flatpak => l10n.unifiedDetailsFlatpakBadge,
       AppSource.appImage => 'AppImage',
-      // TODO(wiring): dedicated RPM l10n badge belongs to the wiring slice.
       AppSource.rpm => 'RPM',
       AppSource.unknown => '?',
     };

@@ -75,7 +75,7 @@ final unifiedManageSearchProvider = StateProvider<String>(
 
 /// Package-source filter for the unified Manage page. [all] disables the
 /// filter; every other value maps 1:1 to a contract [AppSource].
-enum UnifiedManageSourceFilter { all, snap, deb, flatpak, appImage }
+enum UnifiedManageSourceFilter { all, snap, deb, flatpak, appImage, rpm }
 
 /// Typed mapping between [UnifiedManageSourceFilter] and [AppSource].
 extension UnifiedManageSourceFilterX on UnifiedManageSourceFilter {
@@ -86,6 +86,7 @@ extension UnifiedManageSourceFilterX on UnifiedManageSourceFilter {
     UnifiedManageSourceFilter.deb => AppSource.deb,
     UnifiedManageSourceFilter.flatpak => AppSource.flatpak,
     UnifiedManageSourceFilter.appImage => AppSource.appImage,
+    UnifiedManageSourceFilter.rpm => AppSource.rpm,
   };
 
   /// Inverse mapping for building the chip row from the installed list.
@@ -96,10 +97,8 @@ extension UnifiedManageSourceFilterX on UnifiedManageSourceFilter {
         AppSource.deb => UnifiedManageSourceFilter.deb,
         AppSource.flatpak => UnifiedManageSourceFilter.flatpak,
         AppSource.appImage => UnifiedManageSourceFilter.appImage,
+        AppSource.rpm => UnifiedManageSourceFilter.rpm,
         AppSource.unknown => null,
-        // TODO(wiring): AppSource.rpm needs a dedicated filter chip +
-        // l10n in the wiring slice; until then rpm apps show under "all".
-        AppSource.rpm => null,
       };
 }
 

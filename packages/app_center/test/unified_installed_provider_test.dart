@@ -166,6 +166,7 @@ void main() {
         AppSource.appImage,
       );
       expect(UnifiedManageSourceFilter.rpm.appSource, AppSource.rpm);
+      expect(UnifiedManageSourceFilter.pacman.appSource, AppSource.pacman);
       expect(UnifiedManageSourceFilter.all.appSource, isNull);
     });
 

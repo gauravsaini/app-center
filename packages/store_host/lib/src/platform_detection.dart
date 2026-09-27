@@ -169,4 +169,11 @@ void seedPlatformBackendDefaults(MapFeatureFlags flags, PlatformInfo platform) {
     flags.seedDefault('backend.snap.enabled', false);
     flags.seedDefault('backend.deb.enabled', false);
   }
+  // pacman is unambiguous on Arch-like systems (the probe is
+  // `pacman --version`, which only passes where pacman exists), so —
+  // unlike backend.rpm (seeding deferred, research D11) — it is
+  // seeded ON here. User setFlag still wins (seeded-defaults layer).
+  if (platform.isArchLike) {
+    flags.seedDefault('backend.pacman.enabled', true);
+  }
 }

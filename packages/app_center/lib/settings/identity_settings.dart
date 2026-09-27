@@ -9,6 +9,7 @@ import 'package:app_center/manage/unified_installed_provider.dart';
 import 'package:app_center/search/search_provider.dart';
 import 'package:app_center/settings/community_refresh_store.dart';
 import 'package:app_center/store/store_host_wiring.dart';
+import 'package:app_center/store/store_operations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta/meta.dart';
 import 'package:store_host/store_host.dart';
@@ -31,6 +32,18 @@ void setIdentityEnabled(WidgetRef ref, bool value) {
     flags.setFlag('phase3.identity.enabled', value);
   }
   ref.invalidate(identityEnabledProvider);
+  // Identity gates metadata (phase3-slice5.md §4): the metadata flag
+  // pair lives under the identity flag, and getCommunityMetadata
+  // returns null when identity is off. The details page only watches
+  // communityMetadataProvider while metadataEnabledProvider is true,
+  // so the family must be invalidated explicitly — it holds no flag
+  // dependency of its own, and stale cached entries would otherwise
+  // survive the toggle. (Invalidating identityEnabledProvider already
+  // cascades to metadataEnabledProvider through the dependency graph;
+  // the explicit invalidate below is documentation, not a second
+  // trigger.)
+  ref.invalidate(metadataEnabledProvider);
+  ref.invalidate(communityMetadataProvider);
   // Invalidating the family (no argument) drops every cached query:
   // the next watch re-runs StoreHost.search with the new flag value.
   ref.invalidate(unifiedSearchProvider);

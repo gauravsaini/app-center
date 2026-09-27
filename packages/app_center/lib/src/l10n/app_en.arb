@@ -324,6 +324,24 @@
             "date": {"type": "String"}
         }
     },
+    "settingsMetadataTitle": "Community metadata",
+    "settingsMetadataDescription": "Optional, community-curated app descriptions, screenshots, permissions and ratings for the merged entries above. Fetched only when you tap Refresh metadata below, and only from the metadata mirror URLs configured on this system. There is no automatic download.",
+    "settingsMetadataSignatureNote": "A valid signature proves the metadata came from the holder of the pinned curator key. It does not prove the descriptions, screenshots, permissions or ratings are correct or safe.",
+    "settingsMetadataToggleTitle": "Enable community metadata",
+    "settingsMetadataToggleSubtitle": "Off by default. The details page shows curated descriptions, screenshots, permissions and ratings when available.",
+    "settingsMetadataMirrors": "{count, plural, =0{No metadata mirrors configured} =1{1 metadata mirror configured} other{{count} metadata mirrors configured}}",
+    "settingsMetadataRefreshButton": "Refresh metadata",
+    "settingsMetadataChecking": "Contacting metadata mirrors…",
+    "settingsMetadataUpToDate": "Metadata is up to date",
+    "settingsMetadataEntries": "{count, plural, =1{1 metadata record} other{{count} metadata records}}",
+    "settingsMetadataGeneratedAt": "Metadata generated {date}",
+    "@settingsMetadataGeneratedAt": {
+        "placeholders": {
+            "date": {"type": "String"}
+        }
+    },
+    "settingsMetadataFailed": "Metadata refresh failed",
+    "settingsMetadataSkipped": "Metadata refresh skipped",
     "snapActionRevertLabel": "Revert update",
     "snapActionRevertingLabel": "Reverting update",
     "snapRevertConfirmTitle": "Revert to previous version?",

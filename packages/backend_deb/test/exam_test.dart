@@ -133,7 +133,13 @@ void main() {
 }
 
 /// Reports a ghost package alongside the real one; its details 404.
+/// The bulk path is unavailable so the legacy enumeration (and its
+/// mid-enumeration skip) is exercised.
 class _GhostDebTransport extends StubPackageKitTransport {
+  @override
+  Future<List<DebPackageData>> installedPackages() =>
+      throw PackageKitTransportException('bulk unavailable');
+
   @override
   Future<List<String>> installedNames() async => const [
     'installed-deb',
@@ -152,6 +158,10 @@ class _GhostDebTransport extends StubPackageKitTransport {
 /// PackageKit daemon unreachable.
 class _DeadDebTransport extends StubPackageKitTransport {
   @override
+  Future<List<DebPackageData>> installedPackages() =>
+      throw PackageKitTransportException('dbus service unknown');
+
+  @override
   Future<List<String>> installedNames() async =>
       throw PackageKitTransportException('dbus service unknown');
 }
@@ -160,4 +170,7 @@ class _DeadDebTransport extends StubPackageKitTransport {
 class _EmptyDebTransport extends StubPackageKitTransport {
   @override
   Future<List<String>> installedNames() async => const [];
+
+  @override
+  Future<List<DebPackageData>> installedPackages() async => const [];
 }

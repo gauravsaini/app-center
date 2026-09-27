@@ -190,16 +190,29 @@ class BackendDeb extends StoreBackend {
 
   @override
   Future<List<AppInfo>> listInstalled() async {
+    // Bulk first: one GetPackages(installed) transaction plus one
+    // GetDetails batch (2 total). If the batch fails the backend
+    // degrades to the N+1 legacy enumeration below — the host contract
+    // is partial results, never throw.
+    try {
+      final packages = await transport.installedPackages();
+      return [for (final p in packages) _installedAppInfo(p)];
+    } on PackageKitTransportException {
+      return _listInstalledLegacy();
+    }
+  }
+
+  /// The pre-bulk enumeration: 1 installedNames transaction + 2 per
+  /// package (SearchNames + GetDetails). Kept as the fallback for a
+  /// failed bulk batch; skip-on-not-found and error mapping are
+  /// unchanged from the original listInstalled().
+  Future<List<AppInfo>> _listInstalledLegacy() async {
     late final List<String> names;
     try {
       names = await transport.installedNames();
     } on PackageKitTransportException catch (e) {
       throw _mapError(e);
     }
-    // N+1 getDetails is the honest MVP: the transport contract exposes
-    // only names, and installed sets are small. A bulk
-    // `installedPackages()` transport call would collapse this to one
-    // transaction.
     final apps = <AppInfo>[];
     for (final name in names) {
       late final DebPackageData p;

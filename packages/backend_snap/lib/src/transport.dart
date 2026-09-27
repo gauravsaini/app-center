@@ -100,6 +100,10 @@ abstract class SnapdTransport {
 
   Future<List<String>> installedNames();
 
+  /// All installed snaps in one bulk call. Throw
+  /// [SnapdTransportException] when snapd is not reachable.
+  Future<List<SnapSummaryData>> installedSnaps();
+
   /// Snaps with updates available in the store.
   Future<List<SnapSummaryData>> updatesAvailable();
 

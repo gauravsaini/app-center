@@ -234,6 +234,24 @@ class StubSnapdTransport extends SnapdTransport {
   @override
   Future<List<String>> installedNames() async => const ['installed-snap'];
 
+  /// Scripted result for [installedSnaps]. Null (default) = throw
+  /// [SnapdTransportException], so unscripted stubs exercise the backend's
+  /// legacy fallback path.
+  List<SnapSummaryData>? scriptedInstalledSnaps;
+
+  /// How many times the backend called [installedSnaps].
+  var installedSnapsCalls = 0;
+
+  @override
+  Future<List<SnapSummaryData>> installedSnaps() async {
+    installedSnapsCalls++;
+    final script = scriptedInstalledSnaps;
+    if (script == null) {
+      throw SnapdTransportException('installedSnaps not scripted');
+    }
+    return script;
+  }
+
   @override
   Future<List<SnapSummaryData>> updatesAvailable() async => const [
     SnapSummaryData(

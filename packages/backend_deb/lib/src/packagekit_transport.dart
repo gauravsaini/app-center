@@ -213,6 +213,66 @@ class RealPackageKitTransport extends PackageKitTransport {
     return [for (final e in events) e.packageId.name];
   }
 
+  /// Pure merge step of [installedPackages], kept static so tests can
+  /// exercise the multi-arch dedupe without a D-Bus daemon.
+  static List<DebPackageData> mergeInstalledPackages(
+    List<PackageKitPackageEvent> packages,
+    List<PackageKitDetailsEvent> details,
+  ) {
+    final byName = <String, List<PackageKitPackageEvent>>{};
+    for (final e in packages) {
+      (byName[e.packageId.name] ??= []).add(e);
+    }
+    final detailsByName = {for (final d in details) d.packageId.name: d};
+    return [
+      for (final group in byName.values)
+        _mergeInstalledGroup(group, detailsByName),
+    ];
+  }
+
+  static DebPackageData _mergeInstalledGroup(
+    List<PackageKitPackageEvent> group,
+    Map<String, PackageKitDetailsEvent> detailsByName,
+  ) {
+    // One card per package name: prefer the installed entry's version,
+    // else the first candidate — mirrors [_mergeGroup].
+    final e = group.firstWhere(
+      (e) => e.info == PackageKitInfo.installed,
+      orElse: () => group.first,
+    );
+    final d = detailsByName[e.packageId.name];
+    final detailSummary = d?.summary ?? '';
+    return DebPackageData(
+      name: e.packageId.name,
+      summary: detailSummary.isEmpty ? e.summary : detailSummary,
+      description: d?.description ?? '',
+      version: e.packageId.version,
+      installedVersion: e.info == PackageKitInfo.installed
+          ? e.packageId.version
+          : null,
+    );
+  }
+
+  @override
+  Future<List<DebPackageData>> installedPackages() async {
+    late final List<PackageKitPackageEvent> events;
+    try {
+      events = await _packageEvents(
+        (tx) => tx.getPackages(filter: {PackageKitFilter.installed}),
+      );
+    } on PackageKitTransportException {
+      rethrow;
+    } catch (e) {
+      throw _wrap(e);
+    }
+    if (events.isEmpty) return const [];
+    // Second (and last) transaction: descriptions for every installed
+    // id. A batch failure throws PackageKitTransportException, which
+    // propagates so the backend can fall back to the legacy path.
+    final details = await _detailsEvents([for (final e in events) e.packageId]);
+    return mergeInstalledPackages(events, details);
+  }
+
   @override
   Future<List<DebPackageData>> updatesAvailable() async {
     late final List<PackageKitPackageEvent> updates;

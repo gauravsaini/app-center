@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:store_contracts/store_contracts.dart';
 
 import 'check_updates_result.dart';
+import 'installed_result.dart';
 
 /// Creates single-shot [Timer]s. Injected into [StoreHost] so the stall
 /// watchdog's clock is testable: production passes a factory returning
@@ -132,27 +133,64 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     return controller.stream;
   }
 
-  @override
-  Future<List<UnifiedApp>> installed() async {
-    // One UnifiedApp per AppInfo — no cross-backend merging (v1 grouping
-    // policy, same as search()). A backend failing degrades to partial
-    // results — installed() itself never throws.
-    final out = <UnifiedApp>[];
-    for (final b in await enabledBackends()) {
-      try {
-        for (final app in await b.listInstalled()) {
-          out.add(
-            UnifiedApp(
-              groupId: '${b.id}:${app.identity.nativeId}',
-              variants: [app],
-            ),
-          );
-        }
-      } catch (_) {
-        // Partial results, as with search/checkUpdates.
+  /// Detailed installed listing: parallel fan-out over every enabled
+  /// backend with a per-backend timeout
+  /// (docs/architecture/parallel-installed.md §1).
+  ///
+  /// A backend that hangs past the `installed.backend_timeout_ms` budget
+  /// (read at call time, never cached) or throws is excluded and named
+  /// in [InstalledResult.partialBackendIds] — the listing itself never
+  /// throws. Results are reassembled in backend registration order,
+  /// never completion order. One [UnifiedApp] per [AppInfo] — no
+  /// cross-backend merging (v1 grouping policy, same as search()).
+  Future<InstalledResult> installedDetailed() async {
+    final timeoutMs = _flags.getInt('installed.backend_timeout_ms');
+    final timeout = Duration(milliseconds: timeoutMs > 0 ? timeoutMs : 30000);
+    // Flag filter only: isAvailable() runs INSIDE the per-backend
+    // budget below (never via enabledBackends()), so a
+    // contract-violating hang in isAvailable() can't stall the fan-out
+    // before it starts. A missing backend is a normal runtime
+    // condition, not an error.
+    final backends = [
+      for (final b in _backends)
+        if (_flags.isEnabled('backend.${b.id}.enabled')) b,
+    ];
+    // Index slots preserve registration order: completion order is
+    // nondeterministic and must never leak into the result list.
+    final slots = List<List<AppInfo>?>.filled(backends.length, null);
+    await Future.wait([
+      for (var i = 0; i < backends.length; i++)
+        _installedOneWithTimeout(
+          backends[i],
+          timeout,
+        ).then((r) => slots[i] = r),
+    ]);
+    final apps = <UnifiedApp>[];
+    final partial = <String>[];
+    for (var i = 0; i < backends.length; i++) {
+      final slot = slots[i];
+      if (slot == null) {
+        partial.add(backends[i].id);
+        continue;
+      }
+      for (final app in slot) {
+        apps.add(
+          UnifiedApp(
+            groupId: '${backends[i].id}:${app.identity.nativeId}',
+            variants: [app],
+          ),
+        );
       }
     }
-    return out;
+    return InstalledResult(apps: apps, partialBackendIds: partial);
+  }
+
+  @override
+  Future<List<UnifiedApp>> installed() async {
+    // Silent partial degradation: partiality details are available
+    // via installedDetailed(); this UnifiedCatalog override keeps its
+    // signature and never-throws contract.
+    return (await installedDetailed()).apps;
   }
 
   /// Detailed update check: parallel fan-out over every enabled
@@ -196,13 +234,13 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     return CheckUpdatesResult(updates: updates, partialBackendIds: partial);
   }
 
-  /// One backend's share of the fan-out: `isAvailable()` +
-  /// `checkUpdates()` raced against a single-shot timer from the
-  /// host's injectable [TimerFactory] (never `Future.timeout` — zone
-  /// timers aren't testable; the fake-factory pattern is the same as
-  /// the stall watchdog).
+  /// Shared race skeleton behind [_checkOneWithTimeout] and
+  /// [_installedOneWithTimeout]: `isAvailable()` + [fetch] raced against
+  /// a single-shot timer from the host's injectable [TimerFactory]
+  /// (never `Future.timeout` — zone timers aren't testable; the
+  /// fake-factory pattern is the same as the stall watchdog).
   ///
-  /// Returns the backend's updates, or `null` when it is excluded:
+  /// Returns the backend's items, or `null` when it is excluded:
   /// budget exceeded (timeout), a typed [StoreException], or a raw
   /// throw. The three classes are excluded identically — the taxonomy
   /// differs only in logs/telemetry (parallel-check-updates.md §4),
@@ -212,21 +250,20 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// finishes late has its result dropped, and the orphan's async
   /// errors are absorbed so they can never surface as unhandled
   /// (same detach semantics as the watchdog).
-  Future<List<UpdateInfo>?> _checkOneWithTimeout(
+  Future<List<T>?> _raceOne<T>(
     StoreBackend backend,
     Duration timeout,
+    Future<List<T>> Function(StoreBackend) fetch,
   ) {
-    final done = Completer<List<UpdateInfo>?>();
+    final done = Completer<List<T>?>();
     Timer? timer;
     unawaited(() async {
       try {
         final available = await backend.isAvailable();
-        final updates = available
-            ? await backend.checkUpdates()
-            : <UpdateInfo>[];
+        final items = available ? await fetch(backend) : <T>[];
         if (!done.isCompleted) {
           timer?.cancel();
-          done.complete(updates);
+          done.complete(items);
         }
       } catch (_) {
         // Timeout, typed StoreException, or raw throw — classification
@@ -245,6 +282,32 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     });
     return done.future;
   }
+
+  /// One backend's share of the checkUpdates fan-out: `isAvailable()` +
+  /// `checkUpdates()` raced against a single-shot timer
+  /// (docs/architecture/parallel-check-updates.md §1) — implemented on
+  /// the shared [_raceOne] skeleton.
+  ///
+  /// Returns the backend's updates, or `null` when it is excluded:
+  /// budget exceeded (timeout), a typed [StoreException], or a raw
+  /// throw.
+  Future<List<UpdateInfo>?> _checkOneWithTimeout(
+    StoreBackend backend,
+    Duration timeout,
+  ) => _raceOne(backend, timeout, (b) => b.checkUpdates());
+
+  /// One backend's share of the installed fan-out: `isAvailable()` +
+  /// `listInstalled()` raced against a single-shot timer
+  /// (docs/architecture/parallel-installed.md §1) — implemented on
+  /// the shared [_raceOne] skeleton.
+  ///
+  /// Returns the backend's installed apps, or `null` when it is
+  /// excluded: budget exceeded (timeout), a typed [StoreException],
+  /// or a raw throw.
+  Future<List<AppInfo>?> _installedOneWithTimeout(
+    StoreBackend backend,
+    Duration timeout,
+  ) => _raceOne(backend, timeout, (b) => b.listInstalled());
 
   @override
   Future<List<UpdateInfo>> checkUpdates() async {

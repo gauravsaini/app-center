@@ -10,3 +10,4 @@ export 'package:store_contracts/store_contracts.dart';
 export 'src/check_updates_result.dart';
 export 'src/flags.dart';
 export 'src/host.dart';
+export 'src/installed_result.dart';

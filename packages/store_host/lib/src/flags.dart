@@ -60,6 +60,12 @@ class MapFeatureFlags implements FeatureFlags {
     // call time, never cached.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'updates.backend_timeout_ms': 30000,
+    'installed.backend_timeout_ms': 30000, // Per-backend budget for the
+    // installed listing (docs/architecture/parallel-installed.md §2).
+    // Covers isAvailable() + listInstalled() per backend in the
+    // installedDetailed() fan-out. <= 0 falls back to this default,
+    // never disables. Read at call time, never cached.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     // Kill switch for the AppImage backend plugin (Phase 1): false →
     // backend never registered, host behaves as if AppImage support
     // does not exist. Default off: new backend, needs dogfooding.

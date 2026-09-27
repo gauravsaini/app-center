@@ -12,7 +12,9 @@ import 'package:app_center/manage/manage_app_tile.dart';
 import 'package:app_center/manage/snap_updates_model.dart';
 import 'package:app_center/manage/unified_manage_page.dart';
 import 'package:app_center/manage/unified_updates_manage_page.dart';
+import 'package:app_center/manage/unified_updates_provider.dart';
 import 'package:app_center/manage/unified_updates_section.dart';
+import 'package:app_center/manage/update_poll_scheduler.dart';
 import 'package:app_center/snapd/currently_installing_model.dart';
 import 'package:app_center/store/store_host_wiring.dart';
 import 'package:flutter/material.dart';
@@ -182,34 +184,57 @@ class _ManagePageWithUnifiedUpdates extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
 
-    return ResponsiveLayoutScrollView(
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.only(top: kPagePadding),
-          sliver: SliverList.list(
-            children: [
-              Semantics(
-                header: true,
-                focused: true,
-                child: Text(
-                  l10n.managePageLabel,
-                  style: textTheme.headlineSmall,
+    return RefreshIndicator(
+      onRefresh: () => _refreshUpdates(ref),
+      child: ResponsiveLayoutScrollView(
+        // Lets pull-to-refresh trigger even when the list is short.
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.only(top: kPagePadding),
+            sliver: SliverList.list(
+              children: [
+                Semantics(
+                  header: true,
+                  focused: true,
+                  child: Text(
+                    l10n.managePageLabel,
+                    style: textTheme.headlineSmall,
+                  ),
                 ),
-              ),
-              _SelfUpdateInfoBox(),
-              const SizedBox(height: kMarginLarge),
-            ],
+                _SelfUpdateInfoBox(),
+                const SizedBox(height: kMarginLarge),
+              ],
+            ),
           ),
-        ),
 
-        // Unified updates surface: replaces the legacy updates header,
-        // check/update-all action buttons, and the updates list.
-        const UnifiedUpdatesSection(),
+          // Unified updates surface: replaces the legacy updates header,
+          // check/update-all action buttons, and the updates list.
+          const UnifiedUpdatesSection(),
 
-        ..._managePageTailSlivers(context, ref),
-      ],
+          ..._managePageTailSlivers(context, ref),
+        ],
+      ),
     );
   }
+}
+
+/// Manual pull-to-refresh for the updates surface (update-polling.md
+/// §6): mirrors the installed list — invalidate, await the refetch so
+/// the indicator tracks real progress, then tell the poll scheduler so
+/// the manual check resets the countdown.
+///
+/// The invalidate-while-loading guard (manage-polish) makes this a
+/// no-op while a check is already in flight.
+Future<void> _refreshUpdates(WidgetRef ref) async {
+  final updates = ref.read(unifiedUpdatesProvider);
+  if (!updates.isLoading && !updates.isRefreshing && !updates.isReloading) {
+    ref.invalidate(unifiedUpdatesProvider);
+    // Await the refetch so the indicator tracks real progress instead
+    // of dismissing immediately.
+    await ref.read(unifiedUpdatesProvider.future);
+  }
+  ref.read(updatePollSchedulerProvider.notifier).onManualRefresh();
 }
 
 /// The currently-installing + installed-list tail shared by the legacy

@@ -14,6 +14,7 @@ dependencies:
   backend_deb: ^0.1.0
   backend_flatpak: ^0.1.0
   backend_snap: ^0.1.0
+  backend_appimage: ^0.1.0
   cached_network_image: ^3.4.1
   clock: ^1.1.1
   collection: ^1.18.0

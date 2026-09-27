@@ -6,6 +6,7 @@ import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/multisnap_model.dart';
 import 'package:app_center/snapd/snapd.dart';
 import 'package:app_center/store/store.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +17,7 @@ import 'package:yaru/yaru.dart';
 // TODO: break down into smaller widgets
 class SearchPage extends StatelessWidget {
   const SearchPage({super.key, this.query, String? category})
-      : initialCategoryName = category;
+    : initialCategoryName = category;
 
   final String? query;
   final String? initialCategoryName;
@@ -30,7 +31,8 @@ class SearchPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: kPagePadding) +
+            padding:
+                const EdgeInsets.symmetric(vertical: kPagePadding) +
                 ResponsiveLayout.of(context).padding,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,9 +76,9 @@ class SearchPage extends StatelessWidget {
                             sortOrder?.localize(l10n) ??
                                 l10n.snapSortOrderRelevance,
                           ),
-                          onSelected: (value) => ref
-                              .read(snapSortOrderProvider.notifier)
-                              .state = value,
+                          onSelected: (value) =>
+                              ref.read(snapSortOrderProvider.notifier).state =
+                                  value,
                           child: Text(
                             sortOrder?.localize(l10n) ??
                                 l10n.snapSortOrderRelevance,
@@ -95,9 +97,11 @@ class SearchPage extends StatelessWidget {
                               values: PackageFormat.values,
                               itemBuilder: (context, packageFormat, child) =>
                                   Text(packageFormat.localize(l10n)),
-                              onSelected: (value) => ref
-                                  .read(packageFormatProvider.notifier)
-                                  .state = value,
+                              onSelected: (value) =>
+                                  ref
+                                          .read(packageFormatProvider.notifier)
+                                          .state =
+                                      value,
                               child: Text(
                                 ref.watch(packageFormatProvider).localize(l10n),
                               ),
@@ -112,21 +116,25 @@ class SearchPage extends StatelessWidget {
                             return switch (ref.watch(packageFormatProvider)) {
                               PackageFormat.snap =>
                                 MenuButtonBuilder<SnapCategoryEnum?>(
-                                  values: <SnapCategoryEnum?>[null] +
+                                  values:
+                                      <SnapCategoryEnum?>[null] +
                                       SnapCategoryEnum.values
                                           .whereNot((c) => c.hidden)
                                           .toList(),
                                   itemBuilder: (context, category, child) =>
                                       Text(
-                                    category?.localize(l10n) ??
-                                        l10n.snapCategoryAll,
-                                  ),
-                                  onSelected: (value) => ref
-                                      .read(
-                                        snapCategoryProvider(initialCategory)
-                                            .notifier,
-                                      )
-                                      .state = value,
+                                        category?.localize(l10n) ??
+                                            l10n.snapCategoryAll,
+                                      ),
+                                  onSelected: (value) =>
+                                      ref
+                                              .read(
+                                                snapCategoryProvider(
+                                                  initialCategory,
+                                                ).notifier,
+                                              )
+                                              .state =
+                                          value,
                                   child: Text(
                                     ref
                                             .watch(
@@ -164,9 +172,9 @@ class SearchPage extends StatelessWidget {
                     : ref.watch(packageFormatProvider);
                 return switch (packageFormat) {
                   PackageFormat.snap => _SnapSearchResults(
-                      initialCategory: initialCategory,
-                      query: query,
-                    ),
+                    initialCategory: initialCategory,
+                    query: query,
+                  ),
                   PackageFormat.deb => _DebSearchResults(query: query),
                 };
               },
@@ -200,6 +208,37 @@ class InstallAll extends ConsumerWidget {
 }
 
 // TODO: remove redundancies between `_DebSearchResults` and `SnapSearchResults`
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults({
+    this.title,
+    this.hint,
+  });
+
+  final String? title;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: ResponsiveLayout.of(context).padding,
+      child: Column(
+        children: [
+          const Spacer(),
+          Text(
+            title ?? '',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          Text(
+            hint ?? '',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const Spacer(flex: 3),
+        ],
+      ),
+    );
+  }
+}
+
 class _DebSearchResults extends ConsumerWidget {
   const _DebSearchResults({
     this.query,
@@ -209,6 +248,14 @@ class _DebSearchResults extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Strangler-fig slice: when the deb backend flag is on, source deb
+    // results from StoreHost instead of appstream directly. Flag-off
+    // keeps the legacy path untouched.
+    if (ref.watch(storeFlagsProvider).isEnabled('backend.deb.enabled') &&
+        query != null) {
+      return _UnifiedDebSearchResults(query: query!);
+    }
+
     final l10n = AppLocalizations.of(context);
     final results = ref.watch(appstreamSearchProvider(query ?? ''));
     return results.when(
@@ -261,8 +308,20 @@ class _SnapSearchResults extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final category = ref.watch(snapCategoryProvider(initialCategory));
+
+    // Strangler-fig slice: when the snap backend flag is on and this is a
+    // plain text search (no category filter — the unified host has no
+    // category filtering yet), source snap results from StoreHost instead
+    // of snapd directly. Category browsing and flag-off keep the legacy
+    // path untouched.
+    if (ref.watch(storeFlagsProvider).isEnabled('backend.snap.enabled') &&
+        category == null &&
+        query != null) {
+      return _UnifiedSnapSearchResults(query: query!);
+    }
+
+    final l10n = AppLocalizations.of(context);
     final results = ref.watch(
       sortedSnapSearchProvider(
         SnapSearchParameters(
@@ -318,6 +377,92 @@ class _SnapSearchResults extends ConsumerWidget {
             ),
           );
         },
+      ),
+      loading: () => const Center(child: YaruCircularProgressIndicator()),
+    );
+  }
+}
+
+/// Snap results sourced from the unified store (StoreHost) when
+/// `backend.snap.enabled` is on.
+///
+/// Renders UnifiedApps with `backendId == 'snap'` in the same card grid
+/// style. Tapping a card opens the unified details page (strangler-fig
+/// slice); category browsing and flag-off keep the legacy snap details
+/// flow untouched. A missing/unavailable snap backend degrades to the
+/// normal empty state — never a crash.
+class _UnifiedSnapSearchResults extends ConsumerWidget {
+  const _UnifiedSnapSearchResults({
+    required this.query,
+  });
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final results = ref.watch(unifiedSnapSearchProvider(query));
+    return results.when(
+      data: (data) => data.isNotEmpty
+          ? ResponsiveLayoutScrollView(
+              slivers: [
+                AppCardGrid.fromUnifiedApps(
+                  apps: data,
+                  onTap: (app) =>
+                      StoreNavigator.pushUnifiedDetails(context, app: app),
+                ),
+              ],
+            )
+          : _NoSearchResults(
+              title: l10n.searchPageNoResults(query),
+              hint: l10n.searchPageNoResultsHint,
+            ),
+      error: (error, stack) => ErrorView(
+        error: error,
+        onRetry: () => ref.invalidate(unifiedSnapSearchProvider(query)),
+      ),
+      loading: () => const Center(child: YaruCircularProgressIndicator()),
+    );
+  }
+}
+
+/// Deb results sourced from the unified store (StoreHost) when
+/// `backend.deb.enabled` is on.
+///
+/// Renders UnifiedApps with `backendId == 'deb'` in the same card grid
+/// style, with install/remove driven by the host (see
+/// [UnifiedInstallButton]). Tapping a card opens the unified details
+/// page (strangler-fig slice). A missing/unavailable deb backend
+/// degrades to the normal empty state — never a crash.
+class _UnifiedDebSearchResults extends ConsumerWidget {
+  const _UnifiedDebSearchResults({
+    required this.query,
+  });
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final results = ref.watch(unifiedDebSearchProvider(query));
+    return results.when(
+      data: (data) => data.isNotEmpty
+          ? ResponsiveLayoutScrollView(
+              slivers: [
+                AppCardGrid.fromUnifiedApps(
+                  apps: data,
+                  onTap: (app) =>
+                      StoreNavigator.pushUnifiedDetails(context, app: app),
+                ),
+              ],
+            )
+          : _NoSearchResults(
+              title: l10n.searchPageNoResults(query),
+              hint: l10n.searchPageNoResultsHint,
+            ),
+      error: (error, stack) => ErrorView(
+        error: error,
+        onRetry: () => ref.invalidate(unifiedDebSearchProvider(query)),
       ),
       loading: () => const Center(child: YaruCircularProgressIndicator()),
     );

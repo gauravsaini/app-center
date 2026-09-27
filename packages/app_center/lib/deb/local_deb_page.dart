@@ -52,7 +52,9 @@ class _LocalDebPage extends StatelessWidget {
           child: Html(
             data:
                 '${l10n.localDebWarningBody} <a href="$localDebInfoUrl">${l10n.localDebLearnMore}</a>',
-            style: {'body': Style(margin: Margins.zero)},
+            style: {
+              'body': Style(margin: Margins.zero, padding: HtmlPaddings.zero),
+            },
             onLinkTap: (url, attributes, element) => launchUrlString(url!),
           ),
         ),
@@ -117,10 +119,9 @@ class _LocalDebActionButtons extends ConsumerWidget {
             const SizedBox(height: kPagePadding),
             Text(
               l10n.localDebDialogConfirmation,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium!
-                  .copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium!.copyWith(fontWeight: FontWeight.bold),
             ),
           ],
         ),

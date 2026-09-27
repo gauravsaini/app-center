@@ -1,0 +1,15 @@
+name: backend_deb
+description: Deb backend for the unified *nix store — PackageKit (D-Bus) transport implementing the store_contracts law.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.12.0 <4.0.0'
+
+dependencies:
+  store_contracts:
+    path: ../store_contracts
+  packagekit: ^0.2.7
+
+dev_dependencies:
+  test: ^1.25.0

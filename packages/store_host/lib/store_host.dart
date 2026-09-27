@@ -1,0 +1,11 @@
+/// `store_host` — host-side orchestration.
+///
+/// The host owns the catalog, the operations, the flags, and the
+/// policy. Backends are plugins registered at the composition root
+/// (the app's `main.dart`); UI pages import only this package and
+/// `store_contracts` — never `backend_*`.
+library store_host;
+
+export 'package:store_contracts/store_contracts.dart';
+export 'src/flags.dart';
+export 'src/host.dart';

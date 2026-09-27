@@ -9,6 +9,7 @@ import 'package:app_center/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:snapd/snapd.dart';
+import 'package:yaru/yaru.dart';
 
 /// Position of a tile within a grouped list, used to apply the correct
 /// border radius (rounded top, bottom, both, or none).
@@ -62,39 +63,48 @@ class ManageAppTile extends ConsumerWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: switch (position) {
-          ManageTilePosition.first =>
-            const BorderRadius.only(topLeft: radius, topRight: radius),
+          ManageTilePosition.first => const BorderRadius.only(
+            topLeft: radius,
+            topRight: radius,
+          ),
           ManageTilePosition.middle => BorderRadius.zero,
-          ManageTilePosition.last =>
-            const BorderRadius.only(bottomLeft: radius, bottomRight: radius),
+          ManageTilePosition.last => const BorderRadius.only(
+            bottomLeft: radius,
+            bottomRight: radius,
+          ),
           ManageTilePosition.single => const BorderRadius.all(radius),
         },
         border: switch (position) {
           ManageTilePosition.first => Border(
-              top: border,
-              left: border,
-              right: border,
-              bottom: border,
-            ),
+            top: border,
+            left: border,
+            right: border,
+            bottom: border,
+          ),
           ManageTilePosition.middle => Border(
-              left: border,
-              right: border,
-              bottom: border,
-            ),
+            left: border,
+            right: border,
+            bottom: border,
+          ),
           ManageTilePosition.last => Border(
-              bottom: border,
-              left: border,
-              right: border,
-            ),
+            bottom: border,
+            left: border,
+            right: border,
+          ),
           ManageTilePosition.single => Border.fromBorderSide(border),
         },
       ),
-      child: ListTile(
+      child: YaruListTile(
         key: ValueKey(app.id),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Clickable(
           onTap: () => _navigateToApp(context),
-          child: AppIcon(iconUrl: app.iconUrl, size: 40),
+          child: switch (app) {
+            ManageDebData(debInfo: final debInfo)
+                when debInfo.component != null =>
+              DebAppIcon(component: debInfo.component!, size: 40),
+            _ => AppIcon(iconUrl: app.iconUrl, size: 40),
+          },
         ),
         title: Row(
           children: [
@@ -119,8 +129,9 @@ class ManageAppTile extends ConsumerWidget {
                 flex: 2,
                 child: dateTimeSinceUpdate != null
                     ? Text(
-                        dateTimeSinceUpdate
-                            .managePageUpdateSinceDateTimeAgo(l10n),
+                        dateTimeSinceUpdate.managePageUpdateSinceDateTimeAgo(
+                          l10n,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.start,
@@ -241,8 +252,9 @@ class _SourceDisplay extends StatelessWidget {
 
   Widget _buildSnapSource(Snap snap, String? updateVersion) {
     final version = snap.version;
-    final versionText =
-        updateVersion != null ? '$version → $updateVersion' : version;
+    final versionText = updateVersion != null
+        ? '$version → $updateVersion'
+        : version;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -257,8 +269,9 @@ class _SourceDisplay extends StatelessWidget {
   Widget _buildDebSource(LocalDebInfo debInfo) {
     final version = debInfo.packageInfo.packageId.version;
     final updateVersion = debInfo.updateVersion;
-    final versionText =
-        updateVersion != null ? '$version → $updateVersion' : version;
+    final versionText = updateVersion != null
+        ? '$version → $updateVersion'
+        : version;
 
     return Text(versionText);
   }

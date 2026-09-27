@@ -21,8 +21,10 @@ final isSilentlyCheckingDebUpdatesProvider = StateProvider<bool>((_) => false);
 
 /// Provides the progress (0.0 to 1.0) of an active PackageKit transaction.
 /// Returns null if no transaction is active or the transaction cannot be found.
-final debTransactionProgressProvider =
-    StateProvider.family<double?, int?>((ref, transactionId) {
+final debTransactionProgressProvider = StateProvider.family<double?, int?>((
+  ref,
+  transactionId,
+) {
   if (transactionId == null) return null;
 
   final packageKit = getService<PackageKitService>();
@@ -75,8 +77,9 @@ class LocalDebUpdatesModel extends _$LocalDebUpdatesModel {
     try {
       final updatesMap = await _packageKit.getUpdates();
       final installed = await ref.read(installedPackagesProvider.future);
-      final componentsByPkg =
-          await ref.read(componentsByPackageProvider.future);
+      final componentsByPkg = await ref.read(
+        componentsByPackageProvider.future,
+      );
 
       // Build map of package name -> update package ID
       final newUpdatesMap = {
@@ -92,8 +95,9 @@ class LocalDebUpdatesModel extends _$LocalDebUpdatesModel {
           )
           .toList();
 
-      final packageIds =
-          guiPackagesWithUpdates.map((p) => p.packageId).toList();
+      final packageIds = guiPackagesWithUpdates
+          .map((p) => p.packageId)
+          .toList();
       final details = packageIds.isNotEmpty
           ? await _packageKit.getDetails(packageIds)
           : <String, PackageKitPackageDetails>{};
@@ -123,7 +127,8 @@ class LocalDebUpdatesModel extends _$LocalDebUpdatesModel {
 
   /// Updates a single deb package by starting a PackageKit transaction,
   /// waiting for it to complete, then moving the deb from the updates list
-  /// to the installed apps list.
+  /// to the installed apps list. Failures are reported to the error stream
+  /// and clear the transaction state so the UI doesn't get stuck.
   Future<void> updateDeb(String debId) async {
     if (!state.hasValue) return;
     final deb = state.value!.firstWhere((d) => d.id == debId);
@@ -141,6 +146,15 @@ class LocalDebUpdatesModel extends _$LocalDebUpdatesModel {
         activeTransactionId: null,
       );
       ref.read(installedAppsProvider.notifier).addDebToList(updatedDeb);
+    } on PackageKitTransactionCancelled {
+      /* User cancelled (e.g. dismissed the polkit dialog) — not an error,
+         but propagate it so callers like [updateAll] can stop the batch
+         instead of triggering another authentication prompt. */
+      log.info('Update transaction cancelled: $transactionId for $debId');
+      rethrow;
+    } on Exception catch (e) {
+      log.warning('Update transaction failed: $transactionId for $debId: $e');
+      ref.read(errorStreamControllerProvider).add(e);
     } finally {
       // Always clear the transaction state, even if cancelled or failed
       _updateTransactionId(debId, null);
@@ -158,10 +172,13 @@ class LocalDebUpdatesModel extends _$LocalDebUpdatesModel {
 
   /// Updates all debs with pending updates sequentially. Collects any errors
   /// per-deb and reports them to the error stream after all updates complete.
+  /// A user-initiated cancellation stops the whole batch.
   Future<void> updateAll() async {
     if (!state.hasValue) return;
-    final debIds =
-        state.value!.where((d) => d.hasUpdate).map((d) => d.id).toList();
+    final debIds = state.value!
+        .where((d) => d.hasUpdate)
+        .map((d) => d.id)
+        .toList();
     if (debIds.isEmpty) return;
 
     final errors = <String, Exception>{};
@@ -170,6 +187,10 @@ class LocalDebUpdatesModel extends _$LocalDebUpdatesModel {
     for (final debId in debIds) {
       try {
         await updateDeb(debId);
+      } on PackageKitTransactionCancelled {
+        /* The user cancelled the batch — starting the next deb's transaction
+           would prompt for authentication again. */
+        break;
       } on Exception catch (e) {
         errors[debId] = e;
       }

@@ -30,6 +30,10 @@ class DebData extends AppMetadata with _$DebData {
 
   bool get isInstalled => packageInfo?.info == PackageKitInfo.installed;
 
+  /// Returns true if this package is compulsory for any of the given [desktops].
+  bool isCompulsoryFor(List<String> desktops) =>
+      component.isCompulsoryFor(desktops);
+
   @override
   AppConfinement? get confinement => AppConfinement.fromDeb();
 
@@ -44,15 +48,15 @@ class DebData extends AppMetadata with _$DebData {
 
   @override
   Map<AppLink, String>? get links => Map.fromEntries(
-        component.urls
-            .where(
-              (url) => [
-                AppstreamUrlType.contact,
-                AppstreamUrlType.homepage,
-              ].contains(url.type),
-            )
-            .map((url) => MapEntry(AppLink.fromAppstream(url.type), url.url)),
-      );
+    component.urls
+        .where(
+          (url) => [
+            AppstreamUrlType.contact,
+            AppstreamUrlType.homepage,
+          ].contains(url.type),
+        )
+        .map((url) => MapEntry(AppLink.fromAppstream(url.type), url.url)),
+  );
 
   @override
   DateTime? get published =>
@@ -62,7 +66,7 @@ class DebData extends AppMetadata with _$DebData {
   String? get version => packageInfo?.packageId.version;
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class DebModel extends _$DebModel {
   final packageKit = getService<PackageKitService>();
 
@@ -75,8 +79,9 @@ class DebModel extends _$DebModel {
 
     final packageInfo = await _getPackageInfo(component);
     final hasUpdate = await _getUpdates(packageInfo!);
-    final details = (await packageKit
-        .getDetails([packageInfo.packageId]))[packageInfo.packageId.name];
+    final details = (await packageKit.getDetails([
+      packageInfo.packageId,
+    ]))[packageInfo.packageId.name];
 
     final errorListener = packageKit.errorStream.listen(_onError);
     ref.onDispose(errorListener.cancel);
@@ -115,10 +120,18 @@ class DebModel extends _$DebModel {
   Future<void> cancelTransaction() async {
     if (state.value?.activeTransactionId == null) return;
     await packageKit.cancelTransaction(state.value!.activeTransactionId!);
+    state = AsyncValue.data(
+      state.value!.copyWith(activeTransactionId: null),
+    );
   }
 
   Future<void> _onError(PackageKitServiceError error) async {
-    state = AsyncValue.data(state.value!.copyWith(error: error));
+    state = AsyncValue.data(
+      state.value!.copyWith(
+        error: error,
+        activeTransactionId: null,
+      ),
+    );
   }
 
   Future<PackageKitPackageEvent?> _getPackageInfo(
@@ -130,22 +143,31 @@ class DebModel extends _$DebModel {
   }
 
   Future<bool> _getUpdates(PackageKitPackageEvent packageInfo) async {
-    final detailsEvent =
-        await packageKit.getUpdateDetails(packageInfo.packageId);
+    final detailsEvent = await packageKit.getUpdateDetails(
+      packageInfo.packageId,
+    );
     // a package will list itself in its updates if its up-to-date, so ignore those
-    final updates =
-        detailsEvent?.updates.where((pid) => pid != packageInfo.packageId);
-    var hasUpdate = false;
+    final updates = detailsEvent?.updates.where(
+      (pid) => pid != packageInfo.packageId,
+    );
+    if (updates == null || updates.isEmpty) return false;
 
-    for (final packageUpdate in updates ?? <PackageKitPackageId>[]) {
+    /* getUpdateDetails doesn't flag blocked (e.g. phased) updates, so
+       cross-check against the installable updates from GetUpdates. */
+    final installableNames = (await packageKit.getUpdates())
+        .map((u) => u.packageId.name)
+        .toSet();
+
+    for (final packageUpdate in updates) {
       final packageName = packageUpdate.name;
-      final results =
-          await packageKit.resolve([packageName], installedOnly: true);
-      hasUpdate = results[packageName]?.info == PackageKitInfo.installed;
-      break;
+      if (!installableNames.contains(packageName)) continue;
+      final results = await packageKit.resolve([
+        packageName,
+      ], installedOnly: true);
+      return results[packageName]?.info == PackageKitInfo.installed;
     }
 
-    return hasUpdate;
+    return false;
   }
 
   Future<void> _packageKitAction(Future<int> Function() action) async {
@@ -153,7 +175,24 @@ class DebModel extends _$DebModel {
     state = AsyncValue.data(
       state.value!.copyWith(activeTransactionId: transactionId),
     );
-    await packageKit.waitTransaction(transactionId);
+    try {
+      await packageKit.waitTransaction(transactionId);
+    } on PackageKitTransactionCancelled {
+      // User cancelled (e.g. dismissed the polkit dialog) — not an error.
+    } on Exception catch (e) {
+      /* Report via the same path as PackageKitServiceError events so the
+         page shows the error and clears the stuck transaction state. */
+      await _onError(
+        PackageKitServiceError(
+          code: PackageKitError.internalError,
+          details: e.toString(),
+        ),
+      );
+    } finally {
+      state = AsyncValue.data(
+        state.value!.copyWith(activeTransactionId: null),
+      );
+    }
     ref.invalidateSelf();
   }
 }

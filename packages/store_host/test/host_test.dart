@@ -92,6 +92,84 @@ void main() {
     });
   });
 
+  group('StoreHost installed', () {
+    test(
+      'merges installed apps from enabled backends as separate cards',
+      () async {
+        final host = StoreHost(
+          flags: MapFeatureFlags({
+            'backend.snap.enabled': true,
+            'backend.deb.enabled': true,
+          }),
+        );
+        host.registerBackend(
+          StubInstalledBackend(
+            backendId: 'snap',
+            apps: [
+              stubInstalledApp('snap', 'org.snap.A'),
+              stubInstalledApp('snap', 'org.snap.B'),
+            ],
+          ),
+        );
+        host.registerBackend(
+          StubInstalledBackend(
+            backendId: 'deb',
+            apps: [stubInstalledApp('deb', 'org.deb.C')],
+          ),
+        );
+        final cards = await host.installed();
+        // One card per AppInfo — no cross-backend merging (v1 policy).
+        expect(cards.map((c) => c.groupId).toSet(), {
+          'snap:org.snap.A',
+          'snap:org.snap.B',
+          'deb:org.deb.C',
+        });
+        expect(cards.every((c) => c.variants.length == 1), isTrue);
+      },
+    );
+
+    test(
+      'a failing backend degrades to partial results, never throws',
+      () async {
+        final host = StoreHost(
+          flags: MapFeatureFlags({
+            'backend.snap.enabled': true,
+            'backend.thrower.enabled': true,
+          }),
+        );
+        host.registerBackend(ThrowingInstalledBackend());
+        host.registerBackend(
+          StubInstalledBackend(
+            backendId: 'snap',
+            apps: [stubInstalledApp('snap', 'org.snap.A')],
+          ),
+        );
+        final cards = await host.installed();
+        expect(cards.map((c) => c.groupId), ['snap:org.snap.A']);
+      },
+    );
+
+    test('no enabled backends yields an empty list', () async {
+      final host = StoreHost(
+        flags: MapFeatureFlags({'backend.snap.enabled': false}),
+      );
+      host.registerBackend(
+        StubInstalledBackend(
+          backendId: 'snap',
+          apps: [stubInstalledApp('snap', 'org.snap.A')],
+        ),
+      );
+      expect(await host.installed(), isEmpty);
+    });
+
+    test('backends without listInstalled contribute nothing', () async {
+      // Neither the stub flatpak backend nor StubSnapBackend overrides
+      // listInstalled() — the additive default [] must keep them quiet.
+      final host = makeHost();
+      expect(await host.installed(), isEmpty);
+    });
+  });
+
   group('StoreHost operation engine', () {
     test(
       'second enqueue for the same app returns the existing handle',
@@ -140,6 +218,13 @@ void main() {
       expect(flags.isEnabled('no.such.key'), isFalse);
       expect(flags.getInt('catalog.search_timeout_ms'), 5000);
       expect(flags.getInt('no.such.key'), 0);
+    });
+
+    test('pages.manage.unified defaults to false', () {
+      // The Manage page strangles onto StoreHost.installed() behind this
+      // flag; dark until the page migration slice flips it (ADR-010:
+      // owner libreapp-center, removal 2027-06-30).
+      expect(MapFeatureFlags().isEnabled('pages.manage.unified'), isFalse);
     });
 
     test('setFlag notifies via changes', () async {

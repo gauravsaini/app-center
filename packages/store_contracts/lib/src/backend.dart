@@ -77,6 +77,21 @@ abstract class StoreBackend {
   /// Available updates known to this backend.
   Future<List<UpdateInfo>> checkUpdates();
 
+  /// Installed apps managed by this backend.
+  ///
+  /// PRE: none. A backend that cannot enumerate its installed apps
+  ///   returns [] (the default) — "not supported".
+  /// POST: every returned [AppInfo.identity.backendId] == this backend's
+  ///   `id`. Identities carrying another backend's id are a contract
+  ///   violation (exam-enforced).
+  /// THROWS: [StoreException] subtypes only — never raw errors. A raw
+  ///   throw fails the contract exam (the host catches regardless).
+  ///
+  /// The default implementation returns []. Backends inherit it and keep
+  /// compiling — this is the LLD §10 additive path (new optional method
+  /// with a default, minor version bump).
+  Future<List<AppInfo>> listInstalled() => Future.value(const []);
+
   /// Best-effort re-attach to operations the backend reports still
   /// running after an app restart. Re-attached handles start with
   /// the [Restoring] state. Backends that can't do this return [].

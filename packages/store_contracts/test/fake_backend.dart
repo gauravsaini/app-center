@@ -96,6 +96,12 @@ class FakeStoreBackend extends StoreBackend {
   Future<List<UpdateInfo>> checkUpdates() async => [];
 
   @override
+  Future<List<AppInfo>> listInstalled() async => [
+    _fakeApp('org.fake.InstalledApp1', 'Fake Installed App 1'),
+    _fakeApp('org.fake.InstalledApp2', 'Fake Installed App 2'),
+  ];
+
+  @override
   Future<List<OperationHandle>> recoverInFlight() async => [];
 }
 

@@ -1,6 +1,8 @@
 /// [PackageKitTransport]: everything the backend needs from PackageKit,
 /// expressed in plain Dart. [RealPackageKitTransport] implements it over
-/// `package:packagekit`; tests script [StubPackageKitTransport].
+/// raw D-Bus (the vendored `package:packagekit` client cannot parse the
+/// 5-token IDs real daemons emit — deb-packageid-fix.md §1); tests script
+/// [StubPackageKitTransport].
 library;
 
 /// Transport-level failure. The backend maps these to [StoreException];

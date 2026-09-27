@@ -1,6 +1,5 @@
 import 'package:backend_deb/backend_deb.dart';
 import 'package:backend_deb/testing.dart';
-import 'package:packagekit/packagekit.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -69,36 +68,26 @@ void main() {
     });
 
     test('multi-arch duplicate names collapse to one entry', () {
-      PackageKitPackageEvent pkg(String arch) => PackageKitPackageEvent(
-        info: PackageKitInfo.installed,
-        packageId: PackageKitPackageId(
-          name: 'libfoo',
-          version: '1.0',
-          arch: arch,
-        ),
+      // 5-token IDs as a real apt daemon emits them
+      // (name;version;arch;origin;data).
+      DebRawPackage pkg(String arch) => DebRawPackage(
+        installed: true,
+        id: 'libfoo;1.0;$arch;jammy;manual',
         summary: 'foo',
       );
       final merged = RealPackageKitTransport.mergeInstalledPackages(
         [
           pkg('amd64'),
           pkg('i386'),
-          const PackageKitPackageEvent(
-            info: PackageKitInfo.installed,
-            packageId: PackageKitPackageId(
-              name: 'bar',
-              version: '2.0',
-              arch: 'amd64',
-            ),
+          const DebRawPackage(
+            installed: true,
+            id: 'bar;2.0;amd64;jammy;manual',
             summary: 'bar',
           ),
         ],
         [
-          PackageKitDetailsEvent(
-            packageId: PackageKitPackageId(
-              name: 'libfoo',
-              version: '1.0',
-              arch: 'amd64',
-            ),
+          const DebRawDetails(
+            id: 'libfoo;1.0;amd64;jammy;manual',
             summary: 'foo summary',
             description: 'foo description',
           ),

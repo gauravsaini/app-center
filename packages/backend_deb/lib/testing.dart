@@ -55,6 +55,47 @@ List<DebTxEvent> _quickScript(DebTxStatus status) => [
 ];
 
 class StubPackageKitTransport extends PackageKitTransport {
+  /// Transactions the stub claims to have spent, mirroring the real
+  /// transport's counts: [installedNames] = 1, [getDetails] = 2
+  /// (SearchNames + GetDetails), [installedPackages] = 2 (GetPackages +
+  /// GetDetails). Failed attempts count too.
+  int transactionCount = 0;
+
+  /// Scripted name list served by [installedNames] (the legacy path).
+  List<String> installedNamesScript = const ['installed-deb'];
+
+  /// Scripted per-name details served by [getDetails].
+  final Map<String, DebPackageData> detailsScript = {
+    'test-deb': const DebPackageData(
+      name: 'test-deb',
+      summary: 'a test deb',
+      description: 'A longer description of the test deb.',
+      version: '1.0',
+    ),
+    'installed-deb': const DebPackageData(
+      name: 'installed-deb',
+      summary: 'an installed deb',
+      description: 'Installed, unsandboxed.',
+      version: '2.0',
+      installedVersion: '2.0',
+    ),
+  };
+
+  /// Scripted snapshot served by [installedPackages] (the bulk path).
+  List<DebPackageData> installedPackagesScript = const [
+    DebPackageData(
+      name: 'installed-deb',
+      summary: 'an installed deb',
+      description: 'Installed, unsandboxed.',
+      version: '2.0',
+      installedVersion: '2.0',
+    ),
+  ];
+
+  /// When set, [installedPackages] throws this instead of serving
+  /// [installedPackagesScript], exercising the backend's legacy fallback.
+  PackageKitTransportException? installedPackagesFailure;
+
   @override
   Future<void> checkAvailable() async {}
 
@@ -70,21 +111,27 @@ class StubPackageKitTransport extends PackageKitTransport {
 
   @override
   Future<DebPackageData> getDetails(String name) async {
-    if (name == 'test-deb') return (await search('')).first;
-    if (name == 'installed-deb') {
-      return const DebPackageData(
-        name: 'installed-deb',
-        summary: 'an installed deb',
-        description: 'Installed, unsandboxed.',
-        version: '2.0',
-        installedVersion: '2.0',
-      );
+    transactionCount += 2;
+    final p = detailsScript[name];
+    if (p == null) {
+      throw PackageKitNotFoundException('package "$name" not found');
     }
-    throw PackageKitNotFoundException('package "$name" not found');
+    return p;
   }
 
   @override
-  Future<List<String>> installedNames() async => const ['installed-deb'];
+  Future<List<String>> installedNames() async {
+    transactionCount += 1;
+    return installedNamesScript;
+  }
+
+  @override
+  Future<List<DebPackageData>> installedPackages() async {
+    transactionCount += 2;
+    final failure = installedPackagesFailure;
+    if (failure != null) throw failure;
+    return installedPackagesScript;
+  }
 
   @override
   Future<List<DebPackageData>> updatesAvailable() async => const [

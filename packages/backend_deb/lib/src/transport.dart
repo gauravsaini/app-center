@@ -103,6 +103,13 @@ abstract class PackageKitTransport {
 
   Future<List<String>> installedNames();
 
+  /// Bulk installed snapshot: name/version/summary from one
+  /// `GetPackages(installed)` transaction plus descriptions from one
+  /// `GetDetails` batch, deduped by name (multi-arch events share a
+  /// name). Throw [PackageKitTransportException] when the batch fails;
+  /// the backend falls back to the per-package path.
+  Future<List<DebPackageData>> installedPackages();
+
   /// Packages with updates available.
   Future<List<DebPackageData>> updatesAvailable();
 

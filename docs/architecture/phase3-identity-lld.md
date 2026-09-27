@@ -326,10 +326,14 @@ the path in slice 1; the feature flag gates everything.
 
 ## 6. Seed data (HLD appendix A content)
 
-18 entries; every entry: `canonicalId` (appstream:), `displayName`,
-`appstreamIds[1]`, `homepages[1]` (normalized), `backends` keys for the
-backends where the mapping is confidently known, `provenance{source:
-'seed'}`. rpm/pacman keys are **bare names** (arch-agnostic identity,
+84 entries as of 2026-09-28 (18 original + 66 added in the slice-7
+expansion: browsers, dev tools, media, office/productivity, comms,
+graphics/photo, games, system utils). Every entry: `canonicalId`
+(appstream:), `displayName`, `appstreamIds[1]`, `homepages[1]`
+(normalized), `backends` keys for the backends where the mapping is
+confidently known, `provenance{source: 'seed'}`. The full list lives in
+`seed_index.dart` (the JSON is the source of truth); the table below
+documents the original 18. rpm/pacman keys are **bare names** (arch-agnostic identity,
 §3 of backend override). Backends omitted where the package does not
 exist in the backend's normal sources (e.g. no deb for discord/spotify,
 no pacman for vscode).

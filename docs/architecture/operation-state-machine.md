@@ -79,10 +79,14 @@ Notes:
 - Safe to call in **any** state. No-op when already terminal.
 - From `queued`: dequeue immediately → `cancelling` → `cancelled`.
 - From any other non-terminal state: → `cancelling`, then terminal.
-- Backend MUST reach a terminal state within **2s** of `cancel()`.
+- **Prompt acknowledgment:** the backend MUST emit `cancelling` within
+  2s of `cancel()`, and MUST NOT start new work afterwards. The terminal
+  state follows as soon as the in-flight atomic unit completes — a dpkg
+  configure or a large file copy legitimately outlasts the 2s
+  acknowledgment budget, and the backend finishes the unit, then honours
+  the cancel (→ `cancelled`, or `done` with `cancelRequested: true` past
+  the point of no return).
 - Calling `cancel()` while `cancelling` is a no-op.
-- Cooperative but prompt: if the backend cannot interrupt the current
-  atomic unit, it finishes the unit, then honours the cancel.
 
 ---
 
@@ -94,11 +98,24 @@ Notes:
   indeterminate (UI shows spinner + phase label).
 - Backends MUST NOT fabricate progress. No fake 99%.
 - **Heartbeat:** during `downloading`/`applying`, the backend emits a state
-  event at least every 60s even if nothing changed.
-- **Watchdog:** if the engine sees no event for `engine.stall_timeout`
-  (default 10 min, flag-controlled), it calls `cancel()`; if no terminal
-  state follows within 30s, the handle goes to
-  `failed(TimeoutException)`.
+  event at least every 60s even if nothing changed — a same-payload
+  re-emit (legal self-transition). The heartbeat proves the backend's
+  event loop is alive; the engine never synthesizes liveness.
+  Implemented 2026-09-27 (stall-watchdog slice); see
+  [stall-watchdog.md](stall-watchdog.md) for the per-backend mechanism.
+- **Watchdog:** the engine (`StoreHost`) wraps every handle and re-arms a
+  single-shot timer on each state event. If no event arrives for
+  `engine.stall_timeout` (default 10 min, flag-controlled) while in a
+  watched phase (`restoring`, `preparing`, `downloading`, `verifying`,
+  `applying`), the engine marks the handle stalled (advisory
+  `StallAware.isStalled`, surfaced in the UI) and calls `cancel()`.
+  Watched-phase exclusions: `queued` (engine-owned wait),
+  `authenticating` (user-attended polkit prompt), `cancelling`
+  (governed by §3, not by the stall timer).
+  If no terminal state follows the watchdog's cancel within 30s, the
+  handle goes to `failed(TimeoutException)` with `stalledPhase` set to
+  the hung phase; the engine detaches (later backend events are ignored).
+  Implemented 2026-09-27 (stall-watchdog slice).
 
 ---
 
@@ -239,8 +256,11 @@ class OperationState with _$OperationState {
 1. `install` → first state is `queued` (or `restoring` for re-attached).
 2. Recorded transitions form a legal path through the DAG in §2.
    A fake emitting `downloading → queued` fails the exam.
-3. `cancel()` from each non-terminal phase → terminal within 2s;
-   terminal ∈ {`cancelled`, `done`}; never a bare `failed`.
+3. `cancel()` from an active phase → `cancelling` emitted within 2s
+   (prompt acknowledgment, §3), then terminal; terminal ∈ {`cancelled`,
+   `done`}; never a bare `failed`. (The exam enforces ≤5s to terminal on
+   scripted fixtures as a hung-backend tripwire; production's bound is
+   the atomic unit's natural length, per §3.)
 4. Progress monotonicity: `bytesDone` / `fraction` never decrease.
 5. Every `failed` carries a `StoreException` with non-empty `code` and
    `debugDetail`.

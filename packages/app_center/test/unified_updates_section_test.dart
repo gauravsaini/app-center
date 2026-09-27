@@ -5,13 +5,17 @@ import 'package:app_center/manage/local_snap_providers.dart';
 import 'package:app_center/manage/manage.dart';
 import 'package:app_center/snapd/snapd.dart';
 import 'package:app_center/store/store_host_wiring.dart';
+import 'package:app_center/store/store_operations.dart';
+import 'package:app_center/widgets/operation_inflight_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:store_host/store_host.dart';
 import 'package:ubuntu_service/ubuntu_service.dart';
 import 'package:ubuntu_widgets/ubuntu_widgets.dart';
+import 'package:yaru/yaru.dart';
 
+import 'fake_inflight_handle.dart';
 import 'test_utils.dart';
 
 /// Widget tests for the updates strangler-fig slice:
@@ -112,6 +116,112 @@ void main() {
       );
       // The provider is invalidated after the batch completes.
       expect(backend.checkUpdatesCalls, greaterThan(checksBefore));
+    });
+
+    testWidgets('row with in-flight handle renders progress + cancel', (
+      tester,
+    ) async {
+      final flags = MapFeatureFlags({
+        'pages.updates.unified': true,
+        'backend.fake.enabled': true,
+      });
+      const inFlightId = AppIdentity(
+        backendId: 'fake',
+        nativeId: 'fake.app1',
+      );
+      final handle = FakeInFlightHandle(
+        app: inFlightId,
+        kind: OperationKind.update,
+      );
+      addTearDown(handle.dispose);
+      handle.emit(const Downloading(bytesDone: 3, bytesTotal: 10));
+      final host = StoreHost(flags: flags)
+        ..registerBackend(
+          _StubUpdatesBackend(
+            updates: [
+              _update('fake.app1', 'Fake App One', '1.0', '2.0'),
+              _update('fake.app2', 'Fake App Two', null, '3.1'),
+            ],
+          ),
+        );
+
+      await tester.pumpApp(
+        (_) => ProviderScope(
+          overrides: [
+            storeFlagsProvider.overrideWithValue(flags),
+            storeHostProvider.overrideWithValue(host),
+            // The row self-matches its non-terminal handle out of the
+            // provider by UpdateInfo.identity (LLD §8).
+            activeOperationsProvider.overrideWith(
+              (ref) => Stream.value(<OperationHandle>[handle]),
+            ),
+          ],
+          child: const CustomScrollView(
+            slivers: [UnifiedUpdatesSection()],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Only the row whose identity matches renders the in-flight
+      // controls, with the scripted determinate progress.
+      expect(find.byType(OperationInFlightControls), findsOneWidget);
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        0.3,
+      );
+      // The other row is unaffected.
+      expect(find.text('Fake App Two'), findsOneWidget);
+
+      // Cancel dispatch reaches the handle; the caption lands.
+      await tester.tap(find.widgetWithIcon(IconButton, YaruIcons.stop));
+      await tester.pump();
+      expect(handle.cancelCallCount, 1);
+      expect(
+        find.text(tester.l10n.snapActionCancellingLabel),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('row without an in-flight handle renders as before', (
+      tester,
+    ) async {
+      final flags = MapFeatureFlags({
+        'pages.updates.unified': true,
+        'backend.fake.enabled': true,
+      });
+      final host = StoreHost(flags: flags)
+        ..registerBackend(
+          _StubUpdatesBackend(
+            updates: [_update('fake.app1', 'Fake App One', '1.0', '2.0')],
+          ),
+        );
+
+      await tester.pumpApp(
+        (_) => ProviderScope(
+          overrides: [
+            storeFlagsProvider.overrideWithValue(flags),
+            storeHostProvider.overrideWithValue(host),
+            activeOperationsProvider.overrideWith(
+              (ref) => Stream.value(const <OperationHandle>[]),
+            ),
+          ],
+          child: const CustomScrollView(
+            slivers: [UnifiedUpdatesSection()],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No handle: no progress controls, row content unchanged.
+      expect(find.byType(OperationInFlightControls), findsNothing);
+      expect(find.text('Fake App One'), findsOneWidget);
+      expect(find.text('1.0 → 2.0'), findsOneWidget);
+      expect(find.text('fake'), findsOneWidget);
     });
 
     testWidgets('empty updates render the empty state', (tester) async {

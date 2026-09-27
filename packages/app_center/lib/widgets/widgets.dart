@@ -7,6 +7,7 @@ export 'banner.dart';
 export 'category_snap_list.dart';
 export 'clickable.dart';
 export 'dialogs.dart';
+export 'operation_inflight_controls.dart';
 export 'screenshot_gallery.dart';
 export 'snap_grid.dart';
 export 'unified_install_button.dart';

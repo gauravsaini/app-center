@@ -26,6 +26,9 @@ import 'package:app_center/layout.dart';
 import 'package:app_center/manage/unified_manage_page.dart';
 import 'package:app_center/manage/unified_updates_provider.dart';
 import 'package:app_center/store/store_host_wiring.dart';
+import 'package:app_center/store/store_operations.dart';
+import 'package:app_center/widgets/operation_inflight_controls.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:store_host/store_host.dart';
@@ -190,21 +193,33 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
   }
 }
 
-/// One available update: backend badge, name, and the version step.
-/// The UI never learns what a snap or a deb is — the identity stays
-/// opaque and is only passed back to the host on update-all.
-class _UpdateRow extends StatelessWidget {
+/// One available update: backend badge, name, the version step, and — while
+/// its update is in flight — live progress + cancel controls matched by
+/// identity out of [activeOperationsProvider]. The UI never learns what a
+/// snap or a deb is — the identity stays opaque and is only passed back to
+/// the host on update-all.
+class _UpdateRow extends ConsumerWidget {
   const _UpdateRow({required this.info});
 
   final UpdateInfo info;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final versions = [
       info.fromVersion,
       info.toVersion,
     ].whereType<String>().where((v) => v.isNotEmpty).join(' → ');
+
+    // Same handle-match as UnifiedInstallButton (LLD §8): the update-all
+    // loop keeps its serial enqueue + _awaitTerminal; the row self-renders
+    // from the provider, so no handle plumbing through the loop.
+    final handle = ref
+        .watch(activeOperationsProvider)
+        .valueOrNull
+        ?.where((h) => h.app == info.identity && !h.current.isTerminal)
+        .firstOrNull;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: kSpacingSmall),
       child: Row(
@@ -232,6 +247,16 @@ class _UpdateRow extends StatelessWidget {
               ],
             ),
           ),
+          if (handle != null) ...[
+            const SizedBox(width: kSpacing),
+            // Trailing slot (shared with the future per-row update
+            // button): bounded so the in-flight controls have a finite
+            // width to lay out their bar in.
+            SizedBox(
+              width: 240,
+              child: OperationInFlightControls(handle: handle),
+            ),
+          ],
         ],
       ),
     );

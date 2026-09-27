@@ -98,15 +98,25 @@ class ResponsiveLayoutBuilder extends LayoutBuilder {
 }
 
 class ResponsiveLayoutScrollView extends StatelessWidget {
-  const ResponsiveLayoutScrollView({super.key, this.slivers = const []});
+  const ResponsiveLayoutScrollView({
+    super.key,
+    this.slivers = const [],
+    this.physics,
+  });
 
   final List<Widget> slivers;
+
+  /// Scroll physics for the inner [CustomScrollView]. `null` keeps the
+  /// platform default; pass [AlwaysScrollableScrollPhysics] when the view
+  /// sits under a [RefreshIndicator] with potentially short content.
+  final ScrollPhysics? physics;
 
   @override
   Widget build(BuildContext context) {
     return ResponsiveLayoutBuilder(
       builder: (context) {
         return CustomScrollView(
+          physics: physics,
           slivers: slivers
               .map(
                 (s) => SliverPadding(

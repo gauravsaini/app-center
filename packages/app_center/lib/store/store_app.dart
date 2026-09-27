@@ -32,7 +32,9 @@ final materialAppNavigatorKeyProvider = Provider(
 );
 
 final yaruPageControllerProvider = Provider(
-  (ref) => YaruPageController(length: pages.length),
+  (ref) => YaruPageController(
+    length: ref.watch(storePagesProvider).length,
+  ),
 );
 
 final routeNameProvider = StateProvider<String?>((ref) => null);
@@ -256,9 +258,10 @@ class _StoreAppHome extends ConsumerWidget {
         initialRoute: ref.watch(initialRouteProvider),
         controller: ref.watch(yaruPageControllerProvider),
         tileBuilder: (context, index, selected, availableWidth) =>
-            pages[index].tileBuilder(context, selected),
-        pageBuilder: (context, index) =>
-            pages[index].pageBuilder(context, searchField),
+            ref.watch(storePagesProvider)[index].tileBuilder(context, selected),
+        pageBuilder: (context, index) => ref
+            .watch(storePagesProvider)[index]
+            .pageBuilder(context, searchField),
         paneLayoutDelegate: YaruResizablePaneDelegate(
           initialPaneSize: kPaneWidth * textScalar.scale(1),
           minPaneSize: kPaneWidth * textScalar.scale(1),

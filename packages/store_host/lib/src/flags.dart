@@ -16,8 +16,15 @@ import 'dart:async';
 import 'package:store_contracts/store_contracts.dart';
 
 class MapFeatureFlags implements FeatureFlags {
-  MapFeatureFlags([Map<String, Object>? seed])
-    : _values = {..._defaults, ...?seed};
+  /// [seed] holds explicit overrides (tests, composition root) — user
+  /// mutations, not defaults: they live in [_values] and always win
+  /// over the [_seeded] detected-defaults layer below.
+  ///
+  /// [_values] intentionally does NOT copy [_defaults]: the lookup
+  /// chain is `_values[key] ?? _seeded[key] ?? _defaults[key]`, so a
+  /// pre-populated `_values` would shadow the seeded layer and make
+  /// platform seeding a no-op (platform-detection.md §3).
+  MapFeatureFlags([Map<String, Object>? seed]) : _values = {...?seed};
 
   /// Documented defaults. Unknown keys fall back here; keys unknown
   /// everywhere read as `false`/`0`/`''` — never throw.
@@ -67,14 +74,40 @@ class MapFeatureFlags implements FeatureFlags {
     // never disables. Read at call time, never cached.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     // Kill switch for the AppImage backend plugin (Phase 1): false →
-    // backend never registered, host behaves as if AppImage support
-    // does not exist. Default off: new backend, needs dogfooding.
+    // backend excluded from fan-outs and enqueue throws
+    // BackendUnavailableException; the backend is still registered
+    // (registration is unconditional — the flag is the filter).
+    // Default off: new backend, needs dogfooding.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'backend.appimage.enabled': false,
+    // isAvailable() memoization TTL
+    // (docs/architecture/platform-detection.md §4): 30s. <= 0 disables
+    // caching entirely — a cache you can disable is a debugging tool,
+    // not a feature. Read at call time, never cached.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'host.probe_cache_ttl_ms': 30000,
   };
 
   final Map<String, Object> _values;
+
+  /// Seeded defaults (docs/architecture/platform-detection.md §3):
+  /// values detected at startup (platform family), consulted after
+  /// user mutations ([_values]) and before compiled [_defaults]:
+  ///
+  /// ```dart
+  /// _values[key] ?? _seeded[key] ?? _defaults[key]
+  /// ```
+  ///
+  /// Startup-only: emits no [changes] event. Later [setFlag] always
+  /// wins — seeding is the detected default, the user has the final
+  /// word.
+  final Map<String, Object> _seeded = {};
   final _changes = StreamController<String>.broadcast();
+
+  /// Seed a *detected* default (platform-detection.md §3).
+  void seedDefault(String key, Object value) {
+    _seeded[key] = value;
+  }
 
   /// Mutate a flag (settings UI, experiments, tests).
   void setFlag(String key, Object value) {
@@ -84,19 +117,19 @@ class MapFeatureFlags implements FeatureFlags {
 
   @override
   bool isEnabled(String key) {
-    final v = _values[key] ?? _defaults[key];
+    final v = _values[key] ?? _seeded[key] ?? _defaults[key];
     return v is bool ? v : false;
   }
 
   @override
   int getInt(String key) {
-    final v = _values[key] ?? _defaults[key];
+    final v = _values[key] ?? _seeded[key] ?? _defaults[key];
     return v is int ? v : 0;
   }
 
   @override
   String getString(String key) {
-    final v = _values[key] ?? _defaults[key];
+    final v = _values[key] ?? _seeded[key] ?? _defaults[key];
     return v is String ? v : '';
   }
 

@@ -68,17 +68,24 @@ typedef StorePage = ({
   Widget Function(BuildContext context, YaruWindowTitleBar title) pageBuilder,
 });
 
-final pages = <StorePage>[
-  (
-    tileBuilder: (context, selected) => _NavigationTile(
-      leading: Icon(ExplorePage.icon(selected)),
-      title: Text(ExplorePage.label(context)),
-    ),
-    pageBuilder: (_, title) => YaruDetailPage(
-      appBar: title,
-      body: const ExplorePage(),
-    ),
+// Page entries, split so [storePagesProvider] can drop the legacy
+// snap-category tiles when the snap backend is disabled
+// (docs/architecture/platform-detection.md §6).
+final StorePage _explorePage = (
+  tileBuilder: (context, selected) => _NavigationTile(
+    leading: Icon(ExplorePage.icon(selected)),
+    title: Text(ExplorePage.label(context)),
   ),
+  pageBuilder: (_, title) => YaruDetailPage(
+    appBar: title,
+    body: const ExplorePage(),
+  ),
+);
+
+// The legacy snap-category tiles (Featured/Productivity/Development):
+// they bypass the host via legacy snap providers, so the shell hides
+// them where the snap backend is disabled.
+final List<StorePage> _snapCategoryPages = [
   for (final category in displayedCategories)
     (
       tileBuilder: (context, selected) => _NavigationTile(
@@ -90,67 +97,92 @@ final pages = <StorePage>[
         body: SearchPage(category: category.categoryName),
       ),
     ),
-  (
-    tileBuilder: (context, selected) => _NavigationTile(
-      leading: Icon(GamesPage.icon(selected)),
-      title: Text(GamesPage.label(context)),
-    ),
-    pageBuilder: (_, title) => YaruDetailPage(
-      appBar: title,
-      body: const GamesPage(),
-    ),
-  ),
-  (
-    tileBuilder: (context, selected) => const Spacer(),
-    pageBuilder: (_, title) => const SizedBox.shrink(),
-  ),
-  (
-    tileBuilder: (context, selected) => _NavigationTile(
-      leading: Icon(ManagePage.icon(selected)),
-      title: Text(ManagePage.label(context)),
-      trailing: Consumer(
-        builder: (context, ref, child) {
-          // Strangler-fig slice: when `pages.updates.unified` is on, the
-          // nav badge counts updates from StoreHost.checkUpdates() via
-          // unifiedUpdatesProvider. Flag off (the default) keeps the
-          // legacy snap/deb count below byte-identical.
-          if (ref
-              .watch(storeFlagsProvider)
-              .isEnabled('pages.updates.unified')) {
-            final updates = ref.watch(unifiedUpdatesProvider);
-            final count = updates.valueOrNull?.length ?? 0;
-
-            return count > 0
-                ? Badge(label: Text('$count'))
-                : const SizedBox.shrink();
-          }
-
-          final snapUpdates = ref.watch(snapUpdatesModelProvider);
-          final debUpdates = ref.watch(localDebUpdatesModelProvider);
-
-          final snapCount = snapUpdates.valueOrNull?.length ?? 0;
-          final debCount = debUpdates.valueOrNull?.length ?? 0;
-          final totalCount = snapCount + debCount;
-
-          return totalCount > 0
-              ? Badge(label: Text('$totalCount'))
-              : const SizedBox.shrink();
-        },
-      ),
-    ),
-    pageBuilder: (_, title) => YaruDetailPage(
-      appBar: title,
-      body: const ManagePage(),
-    ),
-  ),
-  (
-    tileBuilder: (context, selected) => _NavigationTile(
-      leading: Icon(AboutPage.icon(selected)),
-      title: Text(AboutPage.label(context)),
-    ),
-    pageBuilder: (_, title) => YaruDetailPage(
-      appBar: title,
-      body: const AboutPage(),
-    ),
-  ),
 ];
+
+final StorePage _gamesPage = (
+  tileBuilder: (context, selected) => _NavigationTile(
+    leading: Icon(GamesPage.icon(selected)),
+    title: Text(GamesPage.label(context)),
+  ),
+  pageBuilder: (_, title) => YaruDetailPage(
+    appBar: title,
+    body: const GamesPage(),
+  ),
+);
+
+final StorePage _spacerPage = (
+  tileBuilder: (context, selected) => const Spacer(),
+  pageBuilder: (_, title) => const SizedBox.shrink(),
+);
+
+final StorePage _managePage = (
+  tileBuilder: (context, selected) => _NavigationTile(
+    leading: Icon(ManagePage.icon(selected)),
+    title: Text(ManagePage.label(context)),
+    trailing: Consumer(
+      builder: (context, ref, child) {
+        // Strangler-fig slice: when `pages.updates.unified` is on, the
+        // nav badge counts updates from StoreHost.checkUpdates() via
+        // unifiedUpdatesProvider. Flag off (the default) keeps the
+        // legacy snap/deb count below byte-identical.
+        if (ref.watch(storeFlagsProvider).isEnabled('pages.updates.unified')) {
+          final updates = ref.watch(unifiedUpdatesProvider);
+          final count = updates.valueOrNull?.length ?? 0;
+
+          return count > 0
+              ? Badge(label: Text('$count'))
+              : const SizedBox.shrink();
+        }
+
+        final snapUpdates = ref.watch(snapUpdatesModelProvider);
+        final debUpdates = ref.watch(localDebUpdatesModelProvider);
+
+        final snapCount = snapUpdates.valueOrNull?.length ?? 0;
+        final debCount = debUpdates.valueOrNull?.length ?? 0;
+        final totalCount = snapCount + debCount;
+
+        return totalCount > 0
+            ? Badge(label: Text('$totalCount'))
+            : const SizedBox.shrink();
+      },
+    ),
+  ),
+  pageBuilder: (_, title) => YaruDetailPage(
+    appBar: title,
+    body: const ManagePage(),
+  ),
+);
+
+final StorePage _aboutPage = (
+  tileBuilder: (context, selected) => _NavigationTile(
+    leading: Icon(AboutPage.icon(selected)),
+    title: Text(AboutPage.label(context)),
+  ),
+  pageBuilder: (_, title) => YaruDetailPage(
+    appBar: title,
+    body: const AboutPage(),
+  ),
+);
+
+/// The shell's page list.
+///
+/// The legacy snap-category tiles (Featured/Productivity/Development)
+/// are hidden when the snap backend is disabled
+/// (docs/architecture/platform-detection.md §6) — they bypass the host
+/// via legacy snap providers. Manage stays unconditionally: it hosts
+/// the unified pages, which degrade per-backend already. No new
+/// user-visible strings — hiding a tile needs none.
+final storePagesProvider = Provider<List<StorePage>>(
+  (ref) {
+    final snapEnabled = ref.watch(backendEnabledProvider('snap'));
+    return [
+      _explorePage,
+      if (snapEnabled) ..._snapCategoryPages,
+      _gamesPage,
+      _spacerPage,
+      _managePage,
+      _aboutPage,
+    ];
+  },
+  name: 'storePagesProvider',
+);

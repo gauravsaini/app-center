@@ -26,17 +26,45 @@ typedef TimerFactory =
 Timer _realTimerFactory(Duration duration, void Function() callback) =>
     Timer(duration, callback);
 
+/// Injectable wall-clock for the probe cache's lazy TTL expiry.
+/// Production passes [DateTime.now]; tests pass a mutable fake.
+/// The engine never calls `DateTime.now()` directly.
+typedef Clock = DateTime Function();
+
+/// Production [Clock].
+DateTime _realClock() => DateTime.now();
+
+/// One memoized `isAvailable()` result. Expiry is evaluated lazily on
+/// read against the host's injectable [Clock] — no invalidation timer
+/// is ever armed, so a [StoreHost] can never leak pending timers into
+/// a test's teardown (or a widget tree's dispose).
+class _ProbeCacheEntry {
+  _ProbeCacheEntry(this.value, this.cachedAt);
+
+  final bool value;
+  final DateTime cachedAt;
+}
+
 class StoreHost implements UnifiedCatalog, OperationEngine {
-  StoreHost({required FeatureFlags flags, TimerFactory? timerFactory})
-    : _flags = flags,
-      _timerFactory = timerFactory ?? _realTimerFactory;
+  StoreHost({
+    required FeatureFlags flags,
+    TimerFactory? timerFactory,
+    Clock? clock,
+  }) : _flags = flags,
+       _timerFactory = timerFactory ?? _realTimerFactory,
+       _clock = clock ?? _realClock;
 
   final FeatureFlags _flags;
   final TimerFactory _timerFactory;
+  final Clock _clock;
   final List<StoreBackend> _backends = [];
   final Map<String, OperationHandle> _inflight = {};
   final StreamController<List<OperationHandle>> _activeChanges =
       StreamController<List<OperationHandle>>.broadcast();
+
+  /// Memoized `isAvailable()` results per backend id
+  /// (docs/architecture/platform-detection.md §4).
+  final Map<String, _ProbeCacheEntry> _probeCache = {};
 
   /// Register a backend plugin. Called once at the composition root
   /// (the app's `main.dart`) — never from UI pages.
@@ -57,13 +85,50 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     final out = <StoreBackend>[];
     for (final b in _backends) {
       if (!_flags.isEnabled('backend.${b.id}.enabled')) continue;
-      try {
-        if (await b.isAvailable()) out.add(b);
-      } catch (_) {
-        // A throwing isAvailable() counts as unavailable.
-      }
+      // Flag-off backends bypass the probe (and the cache) entirely: a
+      // seeding change takes effect immediately, never waits out a TTL.
+      if (await _isAvailableCached(b)) out.add(b);
     }
     return out;
+  }
+
+  /// Memoized `isAvailable()` per backend id
+  /// (docs/architecture/platform-detection.md §4). The TTL comes from
+  /// the `host.probe_cache_ttl_ms` flag, read at call time; `<= 0`
+  /// disables caching entirely (every call probes). A throwing probe
+  /// still counts as unavailable.
+  ///
+  /// Expiry is lazy: entries carry the probe timestamp and are
+  /// re-probed on read once older than the TTL. No invalidation timer
+  /// is ever armed — expiry never needs to fire proactively (unlike
+  /// the stall watchdog), so the cache cannot leak pending timers.
+  ///
+  /// Why the semantics stay safe: a stale `true` only costs one failed
+  /// fetch (the fan-out degrades to partial as before); a stale
+  /// `false` excludes the backend for at most the TTL, then the next
+  /// call re-probes. Bounded, self-healing.
+  Future<bool> _isAvailableCached(StoreBackend backend) async {
+    final ttlMs = _flags.getInt('host.probe_cache_ttl_ms');
+    if (ttlMs <= 0) {
+      try {
+        return await backend.isAvailable();
+      } catch (_) {
+        return false;
+      }
+    }
+    final hit = _probeCache[backend.id];
+    if (hit != null &&
+        _clock().difference(hit.cachedAt).inMilliseconds < ttlMs) {
+      return hit.value;
+    }
+    bool value;
+    try {
+      value = await backend.isAvailable();
+    } catch (_) {
+      value = false;
+    }
+    _probeCache[backend.id] = _ProbeCacheEntry(value, _clock());
+    return value;
   }
 
   @override
@@ -235,7 +300,9 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   }
 
   /// Shared race skeleton behind [_checkOneWithTimeout] and
-  /// [_installedOneWithTimeout]: `isAvailable()` + [fetch] raced against
+  /// [_installedOneWithTimeout]: `isAvailable()` (memoized per backend
+  /// id — [_isAvailableCached], a cache read is instant and a cache
+  /// miss re-probes under this same budget) + [fetch] raced against
   /// a single-shot timer from the host's injectable [TimerFactory]
   /// (never `Future.timeout` — zone timers aren't testable; the
   /// fake-factory pattern is the same as the stall watchdog).
@@ -259,7 +326,7 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     Timer? timer;
     unawaited(() async {
       try {
-        final available = await backend.isAvailable();
+        final available = await _isAvailableCached(backend);
         final items = available ? await fetch(backend) : <T>[];
         if (!done.isCompleted) {
           timer?.cancel();

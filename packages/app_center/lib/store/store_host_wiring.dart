@@ -31,7 +31,27 @@ final storeFlagsProvider = Provider<FeatureFlags>(
   name: 'storeFlagsProvider',
 );
 
+/// Seeded kill switch for one backend id (`snap`, `flatpak`, `deb`,
+/// `appimage`).
+///
+/// Sync flag read — nav visibility is a startup decision and must not
+/// await probes (docs/architecture/platform-detection.md §6). The flag
+/// reflects the detected platform's seeded default unless the user
+/// overrode it via [MapFeatureFlags.setFlag].
+final backendEnabledProvider = Provider.family<bool, String>(
+  (ref, id) => ref.watch(storeFlagsProvider).isEnabled('backend.$id.enabled'),
+  name: 'backendEnabledProvider',
+);
+
 /// Builds the app-wide [StoreHost] with every backend registered.
+///
+/// Detect → seed → construct → register: [detectPlatform] runs first
+/// (or [platformOverride] in tests), then [seedPlatformBackendDefaults]
+/// writes the detected defaults into [flags] *before* any backend is
+/// registered — no backend is ever registered against unseeded flags.
+/// With a foreign [FeatureFlags] implementation the seed is skipped and
+/// compiled defaults apply (unknown-platform behavior). Detection never
+/// throws; the worst case is [PlatformInfo.unknown()].
 ///
 /// The optional transports exist for tests: production always uses the
 /// real transports (`PackageSnapdTransport`, `CliFlatpakTransport`,
@@ -43,7 +63,16 @@ StoreHost buildStoreHost(
   FlatpakTransport? flatpakTransport,
   PackageKitTransport? debTransport,
   AppImageTransport? appimageTransport,
+  // Test seams (docs/architecture/platform-detection.md §8): inject a
+  // fake platform. Production always passes null and detection runs
+  // against /etc/os-release.
+  PlatformInfo? platformOverride,
+  OsReleaseReader? osReleaseReader,
 }) {
+  final platform = platformOverride ?? detectPlatform(reader: osReleaseReader);
+  if (flags is MapFeatureFlags) {
+    seedPlatformBackendDefaults(flags, platform);
+  }
   final host = StoreHost(flags: flags);
   host.registerBackend(
     BackendSnap(

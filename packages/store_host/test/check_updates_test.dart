@@ -174,8 +174,9 @@ void main() {
       expect(result.updates.map((u) => u.name), ['Healthy']);
       expect(result.partialBackendIds, ['hung']);
       expect(result.isPartial, isTrue);
-      // The orphan's timer was the only one armed; the healthy
-      // backend's timer was cancelled on completion.
+      // The probe cache arms no timers (lazy clock expiry,
+      // platform-detection.md §4); the per-backend race timers are all
+      // gone (fired or cancelled).
       expect(timers.pendingCount, 0);
     });
 

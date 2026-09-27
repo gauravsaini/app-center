@@ -57,6 +57,15 @@ class StubFlatpakTransport extends FlatpakTransport {
         'org.test.Second\tSecond App\t1.5',
       ];
     }
+    if (args.first == 'remote-ls') {
+      // `remote-ls --updates --app --columns=application,name,version
+      // <remote>`: tab-separated, no header row. Both stubbed apps
+      // have a newer version available remotely.
+      return [
+        'org.test.Installed\tTest Installed\t2.1',
+        'org.test.Second\tSecond App\t1.6',
+      ];
+    }
     throw FlatpakCommandException(args, 1, 'stub: unexpected run $args');
   }
 

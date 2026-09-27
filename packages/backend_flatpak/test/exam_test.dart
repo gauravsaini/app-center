@@ -92,6 +92,61 @@ void main() {
     });
   });
 
+  group('BackendFlatpak.checkUpdates', () {
+    test('maps remote-ls rows to UpdateInfos with from/to versions', () async {
+      final backend = BackendFlatpak(transport: StubFlatpakTransport());
+      final updates = await backend.checkUpdates();
+      expect(updates, hasLength(2));
+      final first = updates.first;
+      expect(first.identity.backendId, 'flatpak');
+      expect(first.identity.nativeId, 'org.test.Installed');
+      expect(first.name, 'Test Installed');
+      expect(first.fromVersion, '2.0');
+      expect(first.toVersion, '2.1');
+      final second = updates[1];
+      expect(second.identity.nativeId, 'org.test.Second');
+      expect(second.fromVersion, '1.5');
+      expect(second.toVersion, '1.6');
+    });
+
+    test('skips header and unparsable update rows', () async {
+      final backend = BackendFlatpak(
+        transport: _NoisyUpdatesFlatpakTransport(),
+      );
+      final updates = await backend.checkUpdates();
+      expect(updates.map((u) => u.identity.nativeId), ['org.test.Installed']);
+      expect(updates.single.toVersion, '2.1');
+    });
+
+    test('flatpak missing returns [] instead of throwing', () async {
+      final backend = BackendFlatpak(transport: _DeadFlatpakTransport());
+      expect(await backend.checkUpdates(), isEmpty);
+    });
+
+    test('transport failure throws a typed StoreException', () async {
+      final backend = BackendFlatpak(
+        transport: _BrokenUpdatesFlatpakTransport(),
+      );
+      expect(() => backend.checkUpdates(), throwsA(isA<StoreException>()));
+    });
+
+    test('no updates available returns []', () async {
+      final backend = BackendFlatpak(transport: _NoUpdatesFlatpakTransport());
+      expect(await backend.checkUpdates(), isEmpty);
+    });
+
+    test('update for unknown app has null fromVersion', () async {
+      final backend = BackendFlatpak(
+        transport: _UnknownAppUpdatesFlatpakTransport(),
+      );
+      final updates = await backend.checkUpdates();
+      expect(updates, hasLength(1));
+      expect(updates.single.identity.nativeId, 'org.test.Stranger');
+      expect(updates.single.fromVersion, isNull);
+      expect(updates.single.toVersion, '9.9');
+    });
+  });
+
   group('progress parser', () {
     test('parses percent-only lines', () {
       final p = parseProgressLine('Downloading: 45%')!;
@@ -149,6 +204,55 @@ class _EmptyFlatpakTransport extends StubFlatpakTransport {
   @override
   Future<List<String>> run(List<String> args) async {
     if (args.first == 'list') return const [];
+    return super.run(args);
+  }
+}
+
+/// Mixes a header row, a valid update row, and garbage in
+/// `remote-ls --updates`: only the valid row survives parsing.
+class _NoisyUpdatesFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'remote-ls') {
+      return [
+        'Application\tName\tVersion',
+        'org.test.Installed\tTest Installed\t2.1',
+        'this line has no reverse dns id',
+      ];
+    }
+    return super.run(args);
+  }
+}
+
+/// `remote-ls` fails with a non-127 error: the backend must surface a
+/// typed StoreException, not a raw crash.
+class _BrokenUpdatesFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'remote-ls') {
+      throw FlatpakCommandException(args, 1, 'boom');
+    }
+    return super.run(args);
+  }
+}
+
+/// No updates available on the remote.
+class _NoUpdatesFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'remote-ls') return const [];
+    return super.run(args);
+  }
+}
+
+/// Remote offers an update for an app that is not installed locally:
+/// fromVersion is null, never a crash.
+class _UnknownAppUpdatesFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'remote-ls') {
+      return ['org.test.Stranger\tStranger App\t9.9'];
+    }
     return super.run(args);
   }
 }

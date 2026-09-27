@@ -47,6 +47,11 @@ jobs:
 
   test:
     runs-on: ubuntu-24.04
+    env:
+      # TICS needs Canonical's internal QServer token; forks don't have it.
+      # secrets can't be referenced in `if:` (workflow validation error),
+      # so hoist it to a job-level env and test that instead.
+      TICS_AUTH_TOKEN: ${{ secrets.TICSAUTHTOKEN }}
     steps:
       - uses: canonical/desktop-engineering/gh-actions/flutter/setup@e1069c189573b3525a60f54c5107ea3264f80805
       - run: sudo apt update && sudo apt install -y lcov
@@ -70,7 +75,7 @@ jobs:
       - name: Run TICS analysis
         # TICS needs Canonical's internal QServer token; forks don't have it.
         # Skip silently instead of failing the whole CI job on main.
-        if: github.event_name == 'push' && secrets.TICSAUTHTOKEN != ''
+        if: github.event_name == 'push' && env.TICS_AUTH_TOKEN != ''
         uses: tiobe/tics-github-action@v3
         with:
           mode: qserver

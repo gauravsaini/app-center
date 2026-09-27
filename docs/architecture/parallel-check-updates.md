@@ -300,10 +300,12 @@ Future<List<UpdateInfo>?> _checkOneWithTimeout(
 - **Partiality is per-tick, not persisted.** The caption disappears on
   the next successful full check; there is no "backend X is flapping"
   history. Flap detection would need a new entity — out of scope.
-- **`installed()` and `search()`'s availability path are untouched.**
-  `installed()` is still sequential-with-catch (same hang exposure,
-  different slice if it bites); only `checkUpdates()` gets the fan-out
-  here.
+- **`installed()` got the same treatment** (docs/architecture/parallel-installed.md):
+  `StoreHost.installedDetailed()` fans out concurrently with the
+  `installed.backend_timeout_ms` budget (default 30s), partiality via
+  `InstalledResult`; `installed()` is a signature-preserving projection.
+  `search()`'s availability path is untouched (it has its own
+  `.timeout()` per stream — already covered).
 
 ## 12. Implementation notes (deviations from the sketch above)
 

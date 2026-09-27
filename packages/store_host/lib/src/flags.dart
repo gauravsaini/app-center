@@ -129,6 +129,22 @@ class MapFeatureFlags implements FeatureFlags {
     // Empty (default) → no fetch, ever.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'phase3.community.mirrors': '',
+    // Master switch for community metadata
+    // (docs/architecture/phase3-slice5.md §4): true →
+    // StoreHost.getCommunityMetadata() may return curated metadata;
+    // false (default) → lookups always return null, even with a valid
+    // file on disk. Keys off the canonical id, so it also requires
+    // `phase3.identity.enabled`. New surface, needs dogfooding.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'phase3.metadata.enabled': false,
+    // Comma-separated HTTPS mirror URLs for the community METADATA
+    // doc (phase3-slice5.md §4): tried in order, first fully-verified
+    // `community-metadata` doc wins. Separate from
+    // `phase3.community.mirrors` (identity doc) — different cadence,
+    // different size discipline (10 MiB body cap). Empty (default) →
+    // no fetch, ever.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'phase3.community.metadata.mirrors': '',
   };
 
   final Map<String, Object> _values;

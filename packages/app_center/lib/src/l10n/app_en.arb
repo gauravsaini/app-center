@@ -256,6 +256,25 @@
     "unifiedDetailsSnapBadge": "Snap",
     "unifiedDetailsDebBadge": "Deb",
     "unifiedDetailsFlatpakBadge": "Flatpak",
+    "communityMetadataCuratedTag": "Community-curated",
+    "communityMetadataPermissionsLabel": "Community-curated permissions",
+    "communityMetadataSandboxingLabel": "Sandboxing: {state}",
+    "@communityMetadataSandboxingLabel": {
+        "placeholders": {
+            "state": {"type": "String"}
+        }
+    },
+    "communityMetadataSandboxedLabel": "Sandboxed",
+    "communityMetadataUnsandboxedLabel": "Unsandboxed",
+    "communityMetadataSandboxingUnknownLabel": "Unknown",
+    "communityMetadataPermissionsNote": "Live package permissions shown above take precedence for trust decisions.",
+    "communityMetadataRatingLabel": "{mean} · {count} community ratings",
+    "@communityMetadataRatingLabel": {
+        "placeholders": {
+            "mean": {"type": "String"},
+            "count": {"type": "int"}
+        }
+    },
     "unifiedAppFormatsChip": "{count, plural, =1{{count} format} other{{count} formats}}",
     "settingsPageLabel": "Settings",
     "settingsAppIdentityTitle": "App identity",

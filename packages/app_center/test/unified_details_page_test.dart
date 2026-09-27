@@ -15,6 +15,7 @@ library;
 import 'dart:io';
 
 import 'package:app_center/details/details.dart';
+import 'package:app_center/error/error.dart';
 import 'package:app_center/l10n.dart';
 import 'package:app_center/search/search.dart';
 import 'package:app_center/snapd/snapd.dart';
@@ -478,6 +479,25 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
     expect(find.byIcon(YaruIcons.ok), findsOneWidget);
+  });
+
+  testWidgets('details error state renders without a RenderFlex crash', (
+    tester,
+  ) async {
+    // Regression: ErrorView's Spacers need bounded height; inside the
+    // details page's SingleChildScrollView they crashed with an
+    // unbounded-height RenderFlex error. The page now wraps ErrorView
+    // in IntrinsicHeight (same repair as the unified manage pages).
+    const identity = AppIdentity(backendId: 'snap', nativeId: 'nope');
+    await tester.pumpApp(
+      (_) => ProviderScope(
+        overrides: [storeHostProvider.overrideWithValue(_RecordingHost({}))],
+        child: const UnifiedDetailsPage(identity: identity),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorView), findsOneWidget);
   });
 }
 

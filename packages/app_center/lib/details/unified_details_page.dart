@@ -131,10 +131,14 @@ class _UnifiedDetailsPageState extends ConsumerState<UnifiedDetailsPage> {
                     loading: () => const Center(
                       child: YaruCircularProgressIndicator(),
                     ),
-                    error: (error, _) => ErrorView(
-                      error: error,
-                      onRetry: () => ref.invalidate(
-                        unifiedAppDetailsProvider(_selected),
+                    // ErrorView's Spacers need bounded height; IntrinsicHeight
+                    // sizes it to its content inside the unbounded scroll view.
+                    error: (error, _) => IntrinsicHeight(
+                      child: ErrorView(
+                        error: error,
+                        onRetry: () => ref.invalidate(
+                          unifiedAppDetailsProvider(_selected),
+                        ),
                       ),
                     ),
                   ),

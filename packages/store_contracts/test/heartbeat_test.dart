@@ -36,19 +36,13 @@ void main() {
       now = now.add(const Duration(hours: 1));
 
       expect(hb.shouldBeat(const Applying()), isTrue);
-      expect(
-        hb.shouldBeat(const Downloading(bytesDone: 0)),
-        isTrue,
-      );
+      expect(hb.shouldBeat(const Downloading(bytesDone: 0)), isTrue);
       expect(hb.shouldBeat(const Preparing()), isFalse);
       expect(hb.shouldBeat(const Verifying()), isFalse);
       expect(hb.shouldBeat(const Queued(position: 0)), isFalse);
       expect(hb.shouldBeat(const Authenticating()), isFalse);
       expect(hb.shouldBeat(const Cancelling()), isFalse);
-      expect(
-        hb.shouldBeat(const Done(result: OperationResult())),
-        isFalse,
-      );
+      expect(hb.shouldBeat(const Done(result: OperationResult())), isFalse);
       expect(hb.shouldBeat(const Cancelled()), isFalse);
     });
 
@@ -58,10 +52,7 @@ void main() {
       now = now.add(const Duration(hours: 1));
       // Entering the phase is itself an emission; without markEmitted
       // the helper refuses to fire — backends must record entry.
-      expect(
-        hb.shouldBeat(const Downloading(bytesDone: 0)),
-        isFalse,
-      );
+      expect(hb.shouldBeat(const Downloading(bytesDone: 0)), isFalse);
     });
 
     test('custom interval is honored', () {

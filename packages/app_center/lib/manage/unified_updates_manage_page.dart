@@ -118,12 +118,14 @@ class UnifiedUpdatesManagePage extends ConsumerWidget {
 /// The invalidate-while-loading guard (manage-polish) makes this a
 /// no-op while a check is already in flight.
 Future<void> _refreshUpdates(WidgetRef ref) async {
-  final updates = ref.read(unifiedUpdatesProvider);
+  final updates = ref.read(unifiedUpdatesResultProvider);
   if (!updates.isLoading && !updates.isRefreshing && !updates.isReloading) {
-    ref.invalidate(unifiedUpdatesProvider);
+    // Invalidate the result provider: it owns the single fetch — the
+    // unifiedUpdatesProvider projection joins it (no double fetch).
+    ref.invalidate(unifiedUpdatesResultProvider);
     // Await the refetch so the indicator tracks real progress instead
     // of dismissing immediately.
-    await ref.read(unifiedUpdatesProvider.future);
+    await ref.read(unifiedUpdatesResultProvider.future);
   }
   ref.read(updatePollSchedulerProvider.notifier).onManualRefresh();
 }

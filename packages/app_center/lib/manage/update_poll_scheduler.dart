@@ -2,7 +2,7 @@
 /// (docs/architecture/update-polling.md — HLD §1–§3, LLD §4–§7).
 ///
 /// While the app is open, the scheduler periodically invalidates
-/// [unifiedUpdatesProvider] so the nav badge and the Updates section
+/// [unifiedUpdatesResultProvider] so the nav badge and the Updates section
 /// reflect reality without user action. No modals, no notifications —
 ///
 /// Trigger points:
@@ -13,8 +13,8 @@
 ///   the last completed check is at least one interval old.
 ///
 /// Contract notes:
-/// - The scheduler never calls `checkUpdates()` directly — it only
-///   invalidates the provider; the provider owns the fetch.
+/// - The scheduler never calls `checkUpdatesDetailed()` directly — it
+///   only invalidates the provider; the provider owns the fetch.
 /// - Coalescing: a tick never double-fetches — the poll is skipped
 ///   while the provider is loading/refreshing/reloading.
 /// - Failure posture: the host never throws, so a failed poll keeps
@@ -109,7 +109,7 @@ class UpdatePollScheduler extends Notifier<void> {
     // value as AsyncError) does not reset: the check isn't done yet.
     // Subscribed only while enabled: otherwise merely watching the
     // scheduler would spin up the host and fire a check for nothing.
-    ref.listen(unifiedUpdatesProvider, (_, next) {
+    ref.listen(unifiedUpdatesResultProvider, (_, next) {
       if (next is AsyncData &&
           !next.isLoading &&
           !next.isRefreshing &&
@@ -148,14 +148,15 @@ class UpdatePollScheduler extends Notifier<void> {
 
   /// One poll tick. Coalescing (update-polling.md §2): never
   /// double-fetch — skip while a check is already in flight. The
-  /// scheduler invalidates [unifiedUpdatesProvider] only; it never
-  /// calls `checkUpdates()` directly.
+  /// scheduler invalidates [unifiedUpdatesResultProvider] only (the
+  /// single fetch behind the updates surface); it never calls
+  /// `checkUpdatesDetailed()` directly.
   void _poll() {
-    final updates = ref.read(unifiedUpdatesProvider);
+    final updates = ref.read(unifiedUpdatesResultProvider);
     if (updates.isLoading || updates.isRefreshing || updates.isReloading) {
       return;
     }
-    ref.invalidate(unifiedUpdatesProvider);
+    ref.invalidate(unifiedUpdatesResultProvider);
   }
 
   /// Foreground-resume hook, called by `_UpdatePollTrigger` on

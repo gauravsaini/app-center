@@ -11,6 +11,8 @@ import 'dart:async';
 
 import 'package:store_contracts/store_contracts.dart';
 
+import 'check_updates_result.dart';
+
 /// Creates single-shot [Timer]s. Injected into [StoreHost] so the stall
 /// watchdog's clock is testable: production passes a factory returning
 /// real timers; tests pass a fake with manual `advance()`. The engine
@@ -153,19 +155,103 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     return out;
   }
 
-  @override
-  Future<List<UpdateInfo>> checkUpdates() async {
-    // Called off the UI critical path (staggered/background/cached is
-    // the app's scheduling concern, not this method's).
-    final out = <UpdateInfo>[];
-    for (final b in await enabledBackends()) {
-      try {
-        out.addAll(await b.checkUpdates());
-      } catch (_) {
-        // Partial results, as with search.
+  /// Detailed update check: parallel fan-out over every enabled
+  /// backend with a per-backend timeout
+  /// (docs/architecture/parallel-check-updates.md §1).
+  ///
+  /// A backend that hangs past the `updates.backend_timeout_ms` budget
+  /// (read at call time, never cached) or throws is excluded and named
+  /// in [CheckUpdatesResult.partialBackendIds] — the check itself
+  /// never throws. Results are reassembled in backend registration
+  /// order, never completion order.
+  Future<CheckUpdatesResult> checkUpdatesDetailed() async {
+    final timeoutMs = _flags.getInt('updates.backend_timeout_ms');
+    final timeout = Duration(milliseconds: timeoutMs > 0 ? timeoutMs : 30000);
+    // Flag filter only: isAvailable() runs INSIDE the per-backend
+    // budget below (never via enabledBackends()), so a
+    // contract-violating hang in isAvailable() can't stall the fan-out
+    // before it starts. A missing backend is a normal runtime
+    // condition, not an error.
+    final backends = [
+      for (final b in _backends)
+        if (_flags.isEnabled('backend.${b.id}.enabled')) b,
+    ];
+    // Index slots preserve registration order: completion order is
+    // nondeterministic and must never leak into the result list.
+    final slots = List<List<UpdateInfo>?>.filled(backends.length, null);
+    await Future.wait([
+      for (var i = 0; i < backends.length; i++)
+        _checkOneWithTimeout(backends[i], timeout).then((r) => slots[i] = r),
+    ]);
+    final updates = <UpdateInfo>[];
+    final partial = <String>[];
+    for (var i = 0; i < backends.length; i++) {
+      final slot = slots[i];
+      if (slot == null) {
+        partial.add(backends[i].id);
+      } else {
+        updates.addAll(slot);
       }
     }
-    return out;
+    return CheckUpdatesResult(updates: updates, partialBackendIds: partial);
+  }
+
+  /// One backend's share of the fan-out: `isAvailable()` +
+  /// `checkUpdates()` raced against a single-shot timer from the
+  /// host's injectable [TimerFactory] (never `Future.timeout` — zone
+  /// timers aren't testable; the fake-factory pattern is the same as
+  /// the stall watchdog).
+  ///
+  /// Returns the backend's updates, or `null` when it is excluded:
+  /// budget exceeded (timeout), a typed [StoreException], or a raw
+  /// throw. The three classes are excluded identically — the taxonomy
+  /// differs only in logs/telemetry (parallel-check-updates.md §4),
+  /// and store_host owns no log sink, so no log lines here.
+  ///
+  /// The timeout aborts the *wait*, not the work: a backend that
+  /// finishes late has its result dropped, and the orphan's async
+  /// errors are absorbed so they can never surface as unhandled
+  /// (same detach semantics as the watchdog).
+  Future<List<UpdateInfo>?> _checkOneWithTimeout(
+    StoreBackend backend,
+    Duration timeout,
+  ) {
+    final done = Completer<List<UpdateInfo>?>();
+    Timer? timer;
+    unawaited(() async {
+      try {
+        final available = await backend.isAvailable();
+        final updates = available
+            ? await backend.checkUpdates()
+            : <UpdateInfo>[];
+        if (!done.isCompleted) {
+          timer?.cancel();
+          done.complete(updates);
+        }
+      } catch (_) {
+        // Timeout, typed StoreException, or raw throw — classification
+        // in logs/telemetry only (parallel-check-updates.md §4);
+        // handling is identical: exclude the backend, keep going.
+        if (!done.isCompleted) {
+          timer?.cancel();
+          done.complete(null);
+        }
+      }
+    }());
+    timer = _timerFactory(timeout, () {
+      // Budget exceeded: stop waiting. The orphan above keeps running
+      // underneath; its late result is dropped and its errors absorbed.
+      if (!done.isCompleted) done.complete(null);
+    });
+    return done.future;
+  }
+
+  @override
+  Future<List<UpdateInfo>> checkUpdates() async {
+    // Silent partial degradation: partiality details are available
+    // via checkUpdatesDetailed(); this UnifiedCatalog override keeps
+    // its signature and never-throws contract.
+    return (await checkUpdatesDetailed()).updates;
   }
 
   /// Backend-agnostic details lookup (host convenience, not in the

@@ -11,9 +11,11 @@ Updates section update quietly.
 ### 1. Goal
 
 A store that keeps the system current must not wait for the user to
-open the Updates page. The scheduler runs `StoreHost.checkUpdates()`
-periodically while the app is open and invalidates
-`unifiedUpdatesProvider`, so the badge and section reflect reality
+open the Updates page. The scheduler runs
+`StoreHost.checkUpdatesDetailed()` periodically while the app is open
+and invalidates `unifiedUpdatesResultProvider` (the single fetch behind
+the updates surface; `unifiedUpdatesProvider` is its `.updates`
+projection), so the badge and section reflect reality
 without user action. No modals, no notification spam — badge/section
 update only.
 
@@ -44,11 +46,14 @@ update only.
   `updates.length`; `AsyncLoading` → keep previous count (no flicker);
   `AsyncError` → badge hidden. The scheduler only invalidates; the
   badge rules already handle the rest.
-- **Out of scope.** Host fan-out changes (sequential, no per-backend
-  timeout on the check path — recorded gap, separate slice). OS-level
-  background scheduling (cron/systemd) — this is in-app polling only.
-  Cross-backend dedupe (unchanged thesis: duplicates beat unsafe
-  merges).
+- **Out of scope.** Host fan-out changes — closed by
+  [parallel-check-updates.md](parallel-check-updates.md):
+  `StoreHost.checkUpdatesDetailed()` fans out with a per-backend
+  `updates.backend_timeout_ms` budget (30s default); a hung backend is
+  excluded and the section shows a quiet partial caption instead of
+  stalling the tick. OS-level background scheduling (cron/systemd) —
+  this is in-app polling only. Cross-backend dedupe (unchanged thesis:
+  duplicates beat unsafe merges).
 
 ### 3. Testability
 
@@ -86,13 +91,13 @@ class UpdatePollScheduler extends Notifier<void> {
   // build(): if flag on && interval > 0: schedule first poll with
   // stagger jitter (0–30s), then periodic; hook resumed-lifecycle.
   // poll(): if provider isLoading/isRefreshing/isReloading → skip;
-  //         else ref.invalidate(unifiedUpdatesProvider).
+  //         else ref.invalidate(unifiedUpdatesResultProvider).
   // onManualRefresh(): re-arm the interval timer.
 }
 ```
 
-- The scheduler never reads `checkUpdates()` directly — it only
-  invalidates the provider. The provider owns the fetch.
+- The scheduler never reads `checkUpdatesDetailed()` directly — it
+  only invalidates the provider. The provider owns the fetch.
 - Lifecycle: the trigger widget mixes in `WidgetsBindingObserver`
   (the `didChangeAppLifecycleState` slot is free in `store_app.dart`)
   and calls `scheduler.onResumed()` on `resumed`. `onResumed`
@@ -139,10 +144,13 @@ class UpdatePollScheduler extends Notifier<void> {
 
 ### 9. Honest limitations
 
-- `StoreHost.checkUpdates()` is sequential with no per-backend
-  timeout; a hung backend stalls a poll tick (host-level gap, separate
-  slice). The scheduler skips overlapping ticks, so a hang delays —
-  never duplicates — checks.
+- Per-backend update-check timeouts are now in place
+  ([parallel-check-updates.md](parallel-check-updates.md)): a hung
+  backend is cut at the `updates.backend_timeout_ms` budget (30s
+  default) and excluded as partial, so a poll tick can never stall
+  unboundedly. A *slow but alive* backend past 30s of real metadata
+  fetching is cut exactly like a dead one — the 30s default is the
+  mitigation; per-backend tuning is a future flag.
 - Stagger jitter uses `Random` — unseeded in prod, seeded in tests.
 - In-app only: closing the app stops polling. OS background
   scheduling is a separate (Phase 2) concern.

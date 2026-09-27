@@ -51,6 +51,15 @@ class MapFeatureFlags implements FeatureFlags {
     // polling. Only consumed when `pages.updates.unified` is true.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'updates.poll_interval_ms': 21600000,
+    // Per-backend budget for an update check
+    // (docs/architecture/parallel-check-updates.md §2): 30s. Covers
+    // isAvailable() + checkUpdates() per backend in the
+    // checkUpdatesDetailed() fan-out. <= 0 falls back to this default,
+    // never disables: a timeout is a safety bound, not a feature —
+    // disabling it reintroduces the hang this budget kills. Read at
+    // call time, never cached.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'updates.backend_timeout_ms': 30000,
     // Kill switch for the AppImage backend plugin (Phase 1): false →
     // backend never registered, host behaves as if AppImage support
     // does not exist. Default off: new backend, needs dogfooding.

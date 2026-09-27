@@ -99,7 +99,7 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
         failures.add('${info.name}: $e');
       }
     }
-    ref.invalidate(unifiedUpdatesProvider);
+    ref.invalidate(unifiedUpdatesResultProvider);
     if (mounted) {
       setState(() {
         _updatingAll = false;
@@ -125,8 +125,14 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final updates = ref.watch(unifiedUpdatesProvider);
-    final count = updates.valueOrNull?.length ?? 0;
+    // The result provider owns the single fetch; the rows below read
+    // its `.updates` projection. A hung/excluded backend marks the
+    // result partial — the section shows a quiet caption, never an
+    // error (parallel-check-updates.md §6).
+    final result = ref.watch(unifiedUpdatesResultProvider);
+    final updates = result.valueOrNull?.updates;
+    final count = updates?.length ?? 0;
+    final isPartial = result.valueOrNull?.isPartial ?? false;
 
     return SliverToBoxAdapter(
       child: Column(
@@ -149,7 +155,7 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
                     ? null
                     : () => _updateAll(
                         l10n,
-                        updates.valueOrNull ?? const [],
+                        updates ?? const [],
                       ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -170,9 +176,22 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
               ),
             ],
           ),
+          // Quiet partial caption: one or more backends didn't answer
+          // this tick (hung past the budget or threw), so the list may
+          // be incomplete. No modal, no error styling — the next tick
+          // retries every backend (parallel-check-updates.md §6).
+          if (isPartial) ...[
+            const SizedBox(height: kSpacingSmall),
+            Text(
+              l10n.managePagePartialUpdatesCaption,
+              style: textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: kMarginLarge),
-          updates.when(
-            data: (list) => list.isEmpty
+          result.when(
+            data: (list) => list.updates.isEmpty
                 ? Text(
                     l10n.managePageNoUpdatesAvailableDescription,
                     style: textTheme.titleMedium,
@@ -180,7 +199,7 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (final info in list)
+                      for (final info in list.updates)
                         _UpdateRow(
                           info: info,
                           batchId: _batchId,
@@ -193,7 +212,7 @@ class _UnifiedUpdatesSectionState extends ConsumerState<UnifiedUpdatesSection> {
             error: (error, _) => IntrinsicHeight(
               child: ErrorView(
                 error: error,
-                onRetry: () => ref.invalidate(unifiedUpdatesProvider),
+                onRetry: () => ref.invalidate(unifiedUpdatesResultProvider),
               ),
             ),
             loading: () => const Center(
@@ -314,7 +333,7 @@ class _UpdateRowState extends ConsumerState<_UpdateRow> {
         // A successful update means this row is stale: refresh the list
         // so it disappears. Idempotent — the update-all loop invalidates
         // anyway at batch end.
-        if (terminal is Done) ref.invalidate(unifiedUpdatesProvider);
+        if (terminal is Done) ref.invalidate(unifiedUpdatesResultProvider);
       });
     }
 

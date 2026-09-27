@@ -108,6 +108,106 @@ void main() {
       },
     );
   });
+
+  group('unifiedUpdatesResultProvider', () {
+    test('exposes partialBackendIds when a backend is excluded', () async {
+      final flags = MapFeatureFlags({
+        'pages.updates.unified': true,
+        'backend.fake.enabled': true,
+        'backend.broken.enabled': true,
+      });
+      final host = StoreHost(flags: flags)
+        ..registerBackend(
+          _StubUpdatesBackend([_update('fake.app1', 'Fake App One')]),
+        )
+        ..registerBackend(_ThrowingUpdatesBackend());
+      final container = createContainer(
+        overrides: [
+          storeFlagsProvider.overrideWithValue(flags),
+          storeHostProvider.overrideWithValue(host),
+        ],
+      );
+
+      final result = await container.read(
+        unifiedUpdatesResultProvider.future,
+      );
+
+      expect(result.updates, hasLength(1));
+      expect(result.partialBackendIds, ['broken']);
+      expect(result.isPartial, isTrue);
+    });
+
+    test('full check is not partial', () async {
+      final flags = MapFeatureFlags({
+        'pages.updates.unified': true,
+        'backend.fake.enabled': true,
+      });
+      final host = StoreHost(flags: flags)
+        ..registerBackend(
+          _StubUpdatesBackend([_update('fake.app1', 'Fake App One')]),
+        );
+      final container = createContainer(
+        overrides: [
+          storeFlagsProvider.overrideWithValue(flags),
+          storeHostProvider.overrideWithValue(host),
+        ],
+      );
+
+      final result = await container.read(
+        unifiedUpdatesResultProvider.future,
+      );
+
+      expect(result.partialBackendIds, isEmpty);
+      expect(result.isPartial, isFalse);
+    });
+
+    test(
+      'unifiedUpdatesProvider projects .updates; one fetch is shared',
+      () async {
+        final flags = MapFeatureFlags({
+          'pages.updates.unified': true,
+          'backend.fake.enabled': true,
+        });
+        final host = _CountingHost(flags: flags)
+          ..registerBackend(
+            _StubUpdatesBackend([_update('fake.app1', 'Fake App One')]),
+          );
+        final container = createContainer(
+          overrides: [
+            storeFlagsProvider.overrideWithValue(flags),
+            storeHostProvider.overrideWithValue(host),
+          ],
+        );
+
+        // Watching both providers must not double-fetch: the
+        // projection joins the result provider's in-flight fetch.
+        container.listen(unifiedUpdatesResultProvider, (_, _) {});
+        container.listen(unifiedUpdatesProvider, (_, _) {});
+        final result = await container.read(
+          unifiedUpdatesResultProvider.future,
+        );
+        final projected = await container.read(unifiedUpdatesProvider.future);
+
+        expect(host.detailedCalls, 1);
+        expect(projected, result.updates);
+        expect(projected.single.name, 'Fake App One');
+      },
+    );
+  });
+}
+
+/// [StoreHost] counting `checkUpdatesDetailed()` calls — proves the
+/// result provider and its projection share one fetch.
+class _CountingHost extends StoreHost {
+  _CountingHost({required super.flags});
+
+  int detailedCalls = 0;
+
+  @override
+  Future<CheckUpdatesResult> checkUpdatesDetailed() async {
+    detailedCalls++;
+    return super.checkUpdatesDetailed();
+  }
 }
 
 UpdateInfo _update(

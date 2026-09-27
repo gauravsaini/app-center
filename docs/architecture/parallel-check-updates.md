@@ -304,3 +304,24 @@ Future<List<UpdateInfo>?> _checkOneWithTimeout(
   `installed()` is still sequential-with-catch (same hang exposure,
   different slice if it bites); only `checkUpdates()` gets the fan-out
   here.
+
+## 12. Implementation notes (deviations from the sketch above)
+
+- **`checkUpdatesDetailed()` does not call `enabledBackends()`.**
+  The §1 sketch does, but this slice's own test 8 requires a hanging
+  `isAvailable()` to be absorbed by the per-backend budget — and
+  `enabledBackends()` runs a sequential `isAvailable()` loop with no
+  timeout before the fan-out even starts. Instead the method filters
+  by the `backend.<id>.enabled` flag synchronously and runs
+  `isAvailable()` *inside* the budgeted closure. Behavior for healthy
+  backends is identical (flag-off or throwing-availability backends
+  are still excluded); the fan-out just can't be stalled before it
+  begins.
+- **No log lines per the §4 taxonomy.** `store_host` is a pure-Dart
+  package depending only on `store_contracts` — it owns no logging
+  sink, and adding a logging dependency is out of scope. The
+  classification is structural: timeout, typed `StoreException`, and
+  raw throw are caught at separate points in `_checkOneWithTimeout`
+  and excluded identically, exactly as §4 requires; only the log
+  metadata is missing. If a host log sink ever lands, wire the
+  taxonomy there.

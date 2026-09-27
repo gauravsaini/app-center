@@ -128,6 +128,7 @@
             }
         }
     },
+    "managePagePartialUpdatesCaption": "Some sources didn't respond — showing partial results.",
     "managePageUpdatesFailed": "{n, plural, =1{One update} other{{n} updates}} failed",
     "@managePageUpdatesFailed": {
         "placeholders": {

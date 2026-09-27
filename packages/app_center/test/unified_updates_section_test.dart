@@ -273,9 +273,12 @@ void main() {
         (_) => ProviderScope(
           overrides: [
             storeFlagsProvider.overrideWithValue(flags),
-            unifiedUpdatesProvider.overrideWith((ref) async {
+            unifiedUpdatesResultProvider.overrideWith((ref) async {
               if (shouldThrow) throw Exception('boom');
-              return [_update('fake.app1', 'Fake App One', '1.0', '2.0')];
+              return CheckUpdatesResult(
+                updates: [_update('fake.app1', 'Fake App One', '1.0', '2.0')],
+                partialBackendIds: const [],
+              );
             }),
           ],
           child: const CustomScrollView(
@@ -700,9 +703,12 @@ void main() {
         host,
         flags,
         extraOverrides: [
-          unifiedUpdatesProvider.overrideWith((ref) async {
+          unifiedUpdatesResultProvider.overrideWith((ref) async {
             checkCalls++;
-            return backend.checkUpdates();
+            return CheckUpdatesResult(
+              updates: await backend.checkUpdates(),
+              partialBackendIds: const [],
+            );
           }),
         ],
       );
@@ -879,6 +885,74 @@ void main() {
       expect(find.byType(UnifiedUpdatesManagePage), findsNothing);
     });
   });
+
+  group('partial caption', () {
+    Future<void> pumpSection(
+      WidgetTester tester,
+      StoreHost host,
+      MapFeatureFlags flags,
+    ) => tester.pumpApp(
+      (_) => ProviderScope(
+        overrides: [
+          storeFlagsProvider.overrideWithValue(flags),
+          storeHostProvider.overrideWithValue(host),
+        ],
+        child: const CustomScrollView(
+          slivers: [UnifiedUpdatesSection()],
+        ),
+      ),
+    );
+
+    testWidgets('renders when a backend is excluded, quiet styling', (
+      tester,
+    ) async {
+      final flags = MapFeatureFlags({
+        'pages.updates.unified': true,
+        'backend.fake.enabled': true,
+        'backend.broken.enabled': true,
+      });
+      final host = StoreHost(flags: flags)
+        ..registerBackend(
+          _StubUpdatesBackend(
+            updates: [_update('fake.app1', 'Fake App One', '1.0', '2.0')],
+          ),
+        )
+        ..registerBackend(_ThrowingUpdatesBackend());
+
+      await pumpSection(tester, host, flags);
+      await tester.pumpAndSettle();
+
+      // The healthy backend's row still renders...
+      expect(find.text('Fake App One'), findsOneWidget);
+      // ...with the quiet partial caption underneath the header.
+      final caption = find.text(tester.l10n.managePagePartialUpdatesCaption);
+      expect(caption, findsOneWidget);
+      final text = tester.widget<Text>(caption);
+      expect(text.style?.color, isNotNull);
+    });
+
+    testWidgets('absent when every backend answered', (tester) async {
+      final flags = MapFeatureFlags({
+        'pages.updates.unified': true,
+        'backend.fake.enabled': true,
+      });
+      final host = StoreHost(flags: flags)
+        ..registerBackend(
+          _StubUpdatesBackend(
+            updates: [_update('fake.app1', 'Fake App One', '1.0', '2.0')],
+          ),
+        );
+
+      await pumpSection(tester, host, flags);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fake App One'), findsOneWidget);
+      expect(
+        find.text(tester.l10n.managePagePartialUpdatesCaption),
+        findsNothing,
+      );
+    });
+  });
 }
 
 UpdateInfo _update(
@@ -977,6 +1051,23 @@ class _StubUpdatesBackend extends StoreBackend {
 
   @override
   Future<List<OperationHandle>> recoverInFlight() async => const [];
+}
+
+/// Backend whose checkUpdates throws — pins the host's partial
+/// degradation through the section (the quiet caption, not an error).
+class _ThrowingUpdatesBackend extends _StubUpdatesBackend {
+  _ThrowingUpdatesBackend() : super(updates: const []);
+
+  @override
+  String get id => 'broken';
+
+  @override
+  Future<List<UpdateInfo>> checkUpdates() => Future.error(
+    BackendUnavailableException(
+      debugDetail: 'stub broken backend',
+      backendId: 'broken',
+    ),
+  );
 }
 
 /// An already-terminal update handle: the section's update-all waits on

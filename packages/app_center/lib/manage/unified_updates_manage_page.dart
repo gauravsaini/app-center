@@ -16,7 +16,9 @@ import 'package:app_center/l10n.dart';
 import 'package:app_center/layout.dart';
 import 'package:app_center/manage/unified_installed_provider.dart';
 import 'package:app_center/manage/unified_manage_page.dart';
+import 'package:app_center/manage/unified_updates_provider.dart';
 import 'package:app_center/manage/unified_updates_section.dart';
+import 'package:app_center/manage/update_poll_scheduler.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,71 +38,94 @@ class UnifiedUpdatesManagePage extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     final installed = ref.watch(unifiedInstalledProvider);
 
-    return ResponsiveLayoutScrollView(
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.only(top: kPagePadding),
-          sliver: SliverList.list(
+    return RefreshIndicator(
+      onRefresh: () => _refreshUpdates(ref),
+      child: ResponsiveLayoutScrollView(
+        // Lets pull-to-refresh trigger even when the list is short.
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.only(top: kPagePadding),
+            sliver: SliverList.list(
+              children: [
+                Semantics(
+                  header: true,
+                  focused: true,
+                  child: Text(
+                    l10n.managePageLabel,
+                    style: textTheme.headlineSmall,
+                  ),
+                ),
+                const SizedBox(height: kMarginLarge),
+              ],
+            ),
+          ),
+
+          // Unified updates surface (replaces the legacy updates sections).
+          const UnifiedUpdatesSection(),
+
+          SliverList.list(
             children: [
-              Semantics(
-                header: true,
-                focused: true,
-                child: Text(
-                  l10n.managePageLabel,
-                  style: textTheme.headlineSmall,
+              const SizedBox(height: kSectionSpacing),
+              Text(
+                l10n.managePageInstalledAndUpdatedLabel,
+                style: textTheme.titleMedium!.copyWith(
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: kMarginLarge),
             ],
           ),
-        ),
 
-        // Unified updates surface (replaces the legacy updates sections).
-        const UnifiedUpdatesSection(),
-
-        SliverList.list(
-          children: [
-            const SizedBox(height: kSectionSpacing),
-            Text(
-              l10n.managePageInstalledAndUpdatedLabel,
-              style: textTheme.titleMedium!.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: kMarginLarge),
-          ],
-        ),
-
-        installed.when(
-          data: (apps) => apps.isEmpty
-              ? const SliverToBoxAdapter(child: _EmptyState())
-              : SliverList.builder(
-                  itemCount: apps.length,
-                  itemBuilder: (context, index) =>
-                      _InstalledAppTile(app: apps[index]),
+          installed.when(
+            data: (apps) => apps.isEmpty
+                ? const SliverToBoxAdapter(child: _EmptyState())
+                : SliverList.builder(
+                    itemCount: apps.length,
+                    itemBuilder: (context, index) =>
+                        _InstalledAppTile(app: apps[index]),
+                  ),
+            error: (error, stack) => SliverToBoxAdapter(
+              // ErrorView's Spacers need bounded height; IntrinsicHeight
+              // sizes it to its content inside the unbounded sliver.
+              child: IntrinsicHeight(
+                child: ErrorView(
+                  error: error,
+                  onRetry: () => ref.invalidate(unifiedInstalledProvider),
                 ),
-          error: (error, stack) => SliverToBoxAdapter(
-            // ErrorView's Spacers need bounded height; IntrinsicHeight
-            // sizes it to its content inside the unbounded sliver.
-            child: IntrinsicHeight(
-              child: ErrorView(
-                error: error,
-                onRetry: () => ref.invalidate(unifiedInstalledProvider),
               ),
             ),
+            loading: () => const SliverToBoxAdapter(
+              child: Center(child: YaruCircularProgressIndicator()),
+            ),
           ),
-          loading: () => const SliverToBoxAdapter(
-            child: Center(child: YaruCircularProgressIndicator()),
-          ),
-        ),
 
-        // Bottom spacing
-        const SliverPadding(
-          padding: EdgeInsets.only(bottom: kPagePadding),
-        ),
-      ],
+          // Bottom spacing
+          const SliverPadding(
+            padding: EdgeInsets.only(bottom: kPagePadding),
+          ),
+        ],
+      ),
     );
   }
+}
+
+/// Manual pull-to-refresh for the updates surface (update-polling.md
+/// §6): mirrors the installed list — invalidate, await the refetch so
+/// the indicator tracks real progress, then tell the poll scheduler so
+/// the manual check resets the countdown.
+///
+/// The invalidate-while-loading guard (manage-polish) makes this a
+/// no-op while a check is already in flight.
+Future<void> _refreshUpdates(WidgetRef ref) async {
+  final updates = ref.read(unifiedUpdatesProvider);
+  if (!updates.isLoading && !updates.isRefreshing && !updates.isReloading) {
+    ref.invalidate(unifiedUpdatesProvider);
+    // Await the refetch so the indicator tracks real progress instead
+    // of dismissing immediately.
+    await ref.read(unifiedUpdatesProvider.future);
+  }
+  ref.read(updatePollSchedulerProvider.notifier).onManualRefresh();
 }
 
 /// One installed app: backend badge, name + installed version, and the

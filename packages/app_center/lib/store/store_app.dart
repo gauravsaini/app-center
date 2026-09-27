@@ -8,6 +8,7 @@ import 'package:app_center/gstreamer/gstreamer.dart';
 import 'package:app_center/l10n.dart';
 import 'package:app_center/layout.dart';
 import 'package:app_center/manage/manage_page.dart';
+import 'package:app_center/manage/update_poll_scheduler.dart';
 import 'package:app_center/packagekit/packagekit.dart';
 import 'package:app_center/providers/error_stream_provider.dart';
 import 'package:app_center/search/search.dart';
@@ -79,45 +80,99 @@ class _StoreAppState extends ConsumerState<StoreApp>
       next.whenData((route) => _navigator.pushNamed(route));
     });
 
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF): () {
-          searchFocus.requestFocus();
-          searchFocus.nextFocus();
-        },
-      },
-      child: YaruTheme(
-        builder: (context, yaru, child) => MaterialApp(
-          theme: yaru.theme.customize(locale: _locale),
-          darkTheme: yaru.darkTheme.customize(locale: _locale),
-          highContrastTheme: yaruHighContrastLight.customize(
-            highContrast: true,
-            locale: _locale,
-          ),
-          highContrastDarkTheme: yaruHighContrastDark.customize(
-            highContrast: true,
-            locale: _locale,
-          ),
-          debugShowCheckedModeBanner: false,
-          localizationsDelegates: localizationsDelegates,
-          navigatorKey: ref.watch(materialAppNavigatorKeyProvider),
-          supportedLocales: supportedLocales,
-          scrollBehavior: const MaterialScrollBehavior().copyWith(
-            dragDevices: {
-              PointerDeviceKind.mouse,
-              PointerDeviceKind.touch,
-              PointerDeviceKind.stylus,
-              PointerDeviceKind.unknown,
-              PointerDeviceKind.trackpad,
+    return Stack(
+      children: [
+        CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            LogicalKeySet(
+              LogicalKeyboardKey.control,
+              LogicalKeyboardKey.keyF,
+            ): () {
+              searchFocus.requestFocus();
+              searchFocus.nextFocus();
             },
-          ),
-          home: _StoreAppHome(
-            navigatorKey: _navigatorKey,
-            searchFocus: searchFocus,
+          },
+          child: YaruTheme(
+            builder: (context, yaru, child) => MaterialApp(
+              theme: yaru.theme.customize(locale: _locale),
+              darkTheme: yaru.darkTheme.customize(locale: _locale),
+              highContrastTheme: yaruHighContrastLight.customize(
+                highContrast: true,
+                locale: _locale,
+              ),
+              highContrastDarkTheme: yaruHighContrastDark.customize(
+                highContrast: true,
+                locale: _locale,
+              ),
+              debugShowCheckedModeBanner: false,
+              localizationsDelegates: localizationsDelegates,
+              navigatorKey: ref.watch(materialAppNavigatorKeyProvider),
+              supportedLocales: supportedLocales,
+              scrollBehavior: const MaterialScrollBehavior().copyWith(
+                dragDevices: {
+                  PointerDeviceKind.mouse,
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.stylus,
+                  PointerDeviceKind.unknown,
+                  PointerDeviceKind.trackpad,
+                },
+              ),
+              home: _StoreAppHome(
+                navigatorKey: _navigatorKey,
+                searchFocus: searchFocus,
+              ),
+            ),
           ),
         ),
-      ),
+        // Background update-poll scheduler (update-polling.md §5):
+        // kept alive for the app's lifetime; routes foreground resumes
+        // into the scheduler. Zero-size: no layout impact.
+        const _UpdatePollTrigger(),
+      ],
     );
+  }
+}
+
+/// Keeps [updatePollSchedulerProvider] alive for the app's lifetime and
+/// routes foreground resumes into [UpdatePollScheduler.onResumed].
+///
+/// The `didChangeAppLifecycleState` slot is free here (`_StoreAppState`
+/// only observes locale changes). The scheduler itself is gated on
+/// `pages.updates.unified` and `updates.poll_interval_ms > 0`, so a
+/// resume is a no-op while polling is disabled.
+class _UpdatePollTrigger extends ConsumerStatefulWidget {
+  const _UpdatePollTrigger();
+
+  @override
+  ConsumerState<_UpdatePollTrigger> createState() => _UpdatePollTriggerState();
+}
+
+class _UpdatePollTriggerState extends ConsumerState<_UpdatePollTrigger>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(updatePollSchedulerProvider.notifier).onResumed();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Watching keeps the scheduler (and its timer) alive.
+    ref.watch(updatePollSchedulerProvider);
+    return const SizedBox.shrink();
   }
 }
 

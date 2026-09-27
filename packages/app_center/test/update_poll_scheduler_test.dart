@@ -162,14 +162,18 @@ void main() {
       final h = _makeScheduler(intervalMs: 0);
       expect(h.timers.pendingCount, 0);
       h.timers.advance(const Duration(days: 1));
-      expect(h.fetchCount, 1); // initial watch only, never a poll
+      // Fully inert while disabled: no subscription, so not even the
+      // initial check fires — and never a poll.
+      expect(h.fetchCount, 0);
     });
 
     test('negative interval → no timer scheduled', () {
       final h = _makeScheduler(intervalMs: -1);
       expect(h.timers.pendingCount, 0);
       h.timers.advance(const Duration(days: 1));
-      expect(h.fetchCount, 1); // initial watch only, never a poll
+      // Fully inert while disabled: no subscription, so not even the
+      // initial check fires — and never a poll.
+      expect(h.fetchCount, 0);
     });
 
     test('poll interval flag defaults to 6h', () {

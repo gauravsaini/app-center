@@ -18,8 +18,10 @@ class FlatpakOperationHandle implements OperationHandle {
     required this.kind,
     required FlatpakProcess process,
     required StoreException Function(FlatpakCommandException e) mapError,
+    Duration heartbeatInterval = const Duration(seconds: 60),
   }) : _process = process,
        _mapError = mapError,
+       _heartbeat = PhaseHeartbeat(interval: heartbeatInterval),
        _current = const Queued(position: 0) {
     unawaited(_run());
   }
@@ -33,6 +35,7 @@ class FlatpakOperationHandle implements OperationHandle {
         debugDetail: 'unreachable',
         backendId: 'flatpak',
       )),
+      _heartbeat = PhaseHeartbeat(),
       _current = const Queued(position: 0) {
     unawaited(_runNoop());
   }
@@ -45,6 +48,14 @@ class FlatpakOperationHandle implements OperationHandle {
 
   final FlatpakProcess? _process;
   final StoreException Function(FlatpakCommandException) _mapError;
+
+  /// Stall-watchdog heartbeat (`docs/architecture/stall-watchdog.md` §1):
+  /// re-emits a silent downloading/applying phase at least every
+  /// [PhaseHeartbeat.interval] so the engine sees liveness. The timer is
+  /// best-effort — its body is guarded and it can never break the
+  /// operation.
+  final PhaseHeartbeat _heartbeat;
+  Timer? _heartbeatTimer;
   final _controller = StreamController<OperationState>.broadcast();
   OperationState _current;
   bool _cancelRequested = false;
@@ -61,7 +72,33 @@ class FlatpakOperationHandle implements OperationHandle {
 
   void _emit(OperationState s) {
     _current = s;
+    _heartbeat.markEmitted();
+    if (s is Downloading || s is Applying) {
+      _startHeartbeat();
+    } else {
+      _stopHeartbeat();
+    }
     if (!_closed) _controller.add(s);
+  }
+
+  /// Start the periodic heartbeat on the first downloading/applying
+  /// emission; idempotent — later emissions in the same phase re-use it.
+  void _startHeartbeat() {
+    _heartbeatTimer ??= Timer.periodic(_heartbeat.interval, (_) {
+      try {
+        // The identical state object is a legal self-transition
+        // (Downloading→Downloading, Applying→Applying per the DAG).
+        if (_heartbeat.shouldBeat(_current)) _emit(_current);
+      } catch (_) {
+        // Best-effort: the heartbeat must never break the operation.
+      }
+    });
+  }
+
+  /// Cancel the heartbeat on phase change and terminal states.
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   Future<void> _close() async {

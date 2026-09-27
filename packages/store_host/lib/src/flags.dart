@@ -27,7 +27,12 @@ class MapFeatureFlags implements FeatureFlags {
     'backend.deb.enabled': true,
     'catalog.backend_order': 'flatpak,snap,deb',
     'catalog.search_timeout_ms': 5000,
-    'engine.stall_timeout_ms': 30000,
+    // Stall watchdog default (docs/architecture/stall-watchdog.md §5):
+    // 10 min. A 30s watchdog would false-positive against the 60s
+    // backend heartbeat — a healthy backend may legitimately go 60s
+    // silent in a long phase. Previously 30000 and never consumed,
+    // so the change is safe.
+    'engine.stall_timeout_ms': 600000,
     'engine.max_concurrent_per_backend': 1,
     'engine.history_ttl_ms': 3600000,
     // Strangler switch for the Manage page (installed apps):

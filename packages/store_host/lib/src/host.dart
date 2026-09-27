@@ -8,10 +8,14 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:store_contracts/store_contracts.dart';
 
 import 'check_updates_result.dart';
+import 'identity/file_identity_index.dart';
+import 'identity/identity_resolver.dart';
+import 'identity/seed_index.dart';
 import 'installed_result.dart';
 
 /// Creates single-shot [Timer]s. Injected into [StoreHost] so the stall
@@ -65,6 +69,13 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// Memoized `isAvailable()` results per backend id
   /// (docs/architecture/platform-detection.md §4).
   final Map<String, _ProbeCacheEntry> _probeCache = {};
+
+  /// Lazy Phase 3 identity plumbing (phase3-identity-hld.md). Built on
+  /// the first [resolveIdentity] call and cached for the host's
+  /// lifetime — slice 1 has no reload API. Never built when
+  /// `phase3.identity.enabled` is false.
+  IdentityIndex? _identityIndex;
+  IdentityResolver? _identityResolver;
 
   /// Register a backend plugin. Called once at the composition root
   /// (the app's `main.dart`) — never from UI pages.
@@ -382,6 +393,48 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     // via checkUpdatesDetailed(); this UnifiedCatalog override keeps
     // its signature and never-throws contract.
     return (await checkUpdatesDetailed()).updates;
+  }
+
+  /// Phase 3 cross-format identity resolution
+  /// (docs/architecture/phase3-identity-hld.md).
+  ///
+  /// Returns null unless `phase3.identity.enabled` AND the local
+  /// identity index resolves the identity. Null = unresolved = today's
+  /// per-backend behavior (no behavior change when the flag is off:
+  /// the index is never even loaded).
+  ///
+  /// The index loads lazily on first call and is cached for the host's
+  /// lifetime (slice 1: no reload API): the bundled seed layer plus the
+  /// local overlay at
+  /// `~/.local/share/libreapp-center/identity-overlay.json` when
+  /// `HOME` is set (no overlay when it is absent).
+  Future<CanonicalAppId?> resolveIdentity(
+    AppIdentity id, [
+    IdentitySignal? signals,
+  ]) async {
+    if (!_flags.isEnabled('phase3.identity.enabled')) return null;
+    var resolver = _identityResolver;
+    if (resolver == null) {
+      _identityIndex = await FileIdentityIndexStore().load(
+        seedJson: kIdentitySeedJson,
+        overlayPaths: _identityOverlayPaths(),
+      );
+      resolver = IdentityResolver(
+        index: _identityIndex!,
+        backends: {for (final b in _backends) b.id: b},
+      );
+      _identityResolver = resolver;
+    }
+    return resolver.resolve(id, signals);
+  }
+
+  /// Overlay paths for the lazy identity index (LLD §5.4): the local
+  /// overlay only, resolved from `HOME`. Empty (no overlay) when `HOME`
+  /// is absent — resolution falls back to the bundled seed.
+  static List<String> _identityOverlayPaths() {
+    final home = Platform.environment['HOME'];
+    if (home == null || home.isEmpty) return const [];
+    return ['$home/.local/share/libreapp-center/identity-overlay.json'];
   }
 
   /// Backend-agnostic details lookup (host convenience, not in the

@@ -280,6 +280,19 @@ class BackendRpm extends StoreBackend {
   }
 
   @override
+  String identityLookupKey(AppIdentity identity) {
+    // Arch-agnostic identity (phase3-identity-lld.md §3): the card key
+    // is `name.arch`, but the identity key is the bare name.
+    // Total function: a corrupt id degrades to the nativeId, never
+    // throws.
+    try {
+      return parsePackageId(identity.nativeId).name;
+    } on FormatException {
+      return identity.nativeId;
+    }
+  }
+
+  @override
   Future<List<OperationHandle>> recoverInFlight() async {
     // PackageKit owns its transactions daemon-side, but a raw
     // transaction path cannot be reliably mapped back to (package,

@@ -261,6 +261,18 @@ class BackendPacman extends StoreBackend {
   }
 
   @override
+  String identityLookupKey(AppIdentity identity) {
+    // Arch-agnostic identity (phase3-identity-lld.md §3): the bare
+    // package name — the same helper as the card key. Total function:
+    // a corrupt id degrades to the nativeId, never throws.
+    try {
+      return cardKeyFor(parsePackageId(identity.nativeId).name);
+    } on FormatException {
+      return identity.nativeId;
+    }
+  }
+
+  @override
   Future<List<OperationHandle>> recoverInFlight() async {
     // pacman has no in-flight transaction journal the backend could
     // re-attach to (no snapd-like `Doing` query). Returning [] is

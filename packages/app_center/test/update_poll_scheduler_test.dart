@@ -89,7 +89,7 @@ class _FakeTimer implements Timer {
   }
 }
 
-typedef _Fetch = Future<List<UpdateInfo>> Function();
+typedef _Fetch = Future<CheckUpdatesResult> Function();
 
 /// Test harness: a container with the scheduler live, a fake clock, and
 /// a counted updates provider.
@@ -114,10 +114,10 @@ _Harness _makeScheduler({
 }) {
   final timers = FakeTimerFactory();
   late final _Harness harness;
-  Future<List<UpdateInfo>> countedFetch() async {
+  Future<CheckUpdatesResult> countedFetch() async {
     harness._fetchCount++;
     if (fetch != null) return fetch();
-    return const [];
+    return const CheckUpdatesResult(updates: [], partialBackendIds: []);
   }
 
   final container = createContainer(
@@ -130,12 +130,12 @@ _Harness _makeScheduler({
       ),
       updatePollTimerFactoryProvider.overrideWithValue(timers.call),
       updatePollRandomProvider.overrideWithValue(Random(7)),
-      unifiedUpdatesProvider.overrideWith((_) => countedFetch()),
+      unifiedUpdatesResultProvider.overrideWith((_) => countedFetch()),
     ],
   );
   harness = _Harness._(container, timers);
-  // Instantiating the scheduler subscribes to unifiedUpdatesProvider,
-  // which triggers the initial check.
+  // Instantiating the scheduler subscribes to
+  // unifiedUpdatesResultProvider, which triggers the initial check.
   container.read(updatePollSchedulerProvider);
   return harness;
 }
@@ -188,34 +188,41 @@ void main() {
       // Settle the initial check: a tick only polls when the provider
       // is neither loading nor refreshing, so the clock must not move
       // before the first fetch lands.
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 1);
 
       // Stagger is 0–30s; advancing past the max guarantees it fired.
       h.timers.advance(const Duration(seconds: 31));
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 2);
 
       h.timers.advance(const Duration(seconds: 60));
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 3);
 
       h.timers.advance(const Duration(seconds: 60));
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 4);
     });
 
     test('in-flight fetch at tick → poll skipped, no double fetch', () async {
-      final gate = Completer<List<UpdateInfo>>();
+      final gate = Completer<CheckUpdatesResult>();
       var calls = 0;
       final h = _makeScheduler(
         fetch: () {
           calls++;
           // First check completes; the staggered poll hangs.
-          return calls == 1 ? Future.value(const []) : gate.future;
+          return calls == 1
+              ? Future.value(
+                  const CheckUpdatesResult(
+                    updates: [],
+                    partialBackendIds: [],
+                  ),
+                )
+              : gate.future;
         },
       );
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(calls, 1);
 
       // The staggered poll starts and hangs: exactly one new fetch.
@@ -232,18 +239,20 @@ void main() {
       expect(h.timers.pendingCount, 1);
 
       // The hung check completes; the next tick polls again.
-      gate.complete(const []);
-      await h.container.read(unifiedUpdatesProvider.future);
+      gate.complete(
+        const CheckUpdatesResult(updates: [], partialBackendIds: []),
+      );
+      await h.container.read(unifiedUpdatesResultProvider.future);
       h.timers.advance(const Duration(seconds: 60));
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(calls, 3);
     });
 
     test('manual refresh re-arms the interval from now', () async {
       final h = _makeScheduler();
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       h.timers.advance(const Duration(seconds: 31));
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 2);
 
       // A manual check resets the countdown (update-polling.md §2): the
@@ -255,7 +264,7 @@ void main() {
       await _pump();
       expect(h.fetchCount, 2);
       h.timers.advance(const Duration(seconds: 1));
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 3);
     });
 
@@ -270,17 +279,22 @@ void main() {
             // The staggered poll errors (simulating a breakage above the
             // host, which itself never throws); the retry succeeds.
             if (calls == 2) throw StateError('boom');
-            return Future.value([
-              _update('fake.app1', 'Fake App One'),
-              _update('fake.app2', 'Fake App Two'),
-            ]);
+            return Future.value(
+              CheckUpdatesResult(
+                updates: [
+                  _update('fake.app1', 'Fake App One'),
+                  _update('fake.app2', 'Fake App Two'),
+                ],
+                partialBackendIds: const [],
+              ),
+            );
           },
         );
-        await h.container.read(unifiedUpdatesProvider.future);
+        await h.container.read(unifiedUpdatesResultProvider.future);
         expect(calls, 1);
 
-        final states = <AsyncValue<List<UpdateInfo>>>[];
-        h.container.listen(unifiedUpdatesProvider, (_, next) {
+        final states = <AsyncValue<CheckUpdatesResult>>[];
+        h.container.listen(unifiedUpdatesResultProvider, (_, next) {
           states.add(next);
         });
 
@@ -288,17 +302,17 @@ void main() {
         // escapes the timer machinery — no crash.
         h.timers.advance(const Duration(seconds: 31));
         await expectLater(
-          h.container.read(unifiedUpdatesProvider.future),
+          h.container.read(unifiedUpdatesResultProvider.future),
           throwsStateError,
         );
         expect(calls, 2);
         expect(
-          h.container.read(unifiedUpdatesProvider),
-          isA<AsyncError<List<UpdateInfo>>>(),
+          h.container.read(unifiedUpdatesResultProvider),
+          isA<AsyncError<CheckUpdatesResult>>(),
         );
 
         // While the failing poll was in flight the provider carried the
-        // previous list (a refresh keeps the previous value — Riverpod
+        // previous result (a refresh keeps the previous value — Riverpod
         // surfaces it as AsyncData with the loading flags set, not
         // AsyncLoading) — that is what the nav badge reads, so it keeps
         // the previous count instead of flickering (update-polling.md
@@ -306,17 +320,17 @@ void main() {
         final inFlight = states
             .where((s) => s.isLoading || s.isRefreshing || s.isReloading)
             .single;
-        expect(inFlight.valueOrNull, hasLength(2));
+        expect(inFlight.valueOrNull?.updates, hasLength(2));
 
         // The timer chain survives the error: silent retry at the next
         // tick (update-polling.md §2).
         expect(h.timers.pendingCount, 1);
         h.timers.advance(const Duration(seconds: 60));
-        await h.container.read(unifiedUpdatesProvider.future);
+        await h.container.read(unifiedUpdatesResultProvider.future);
         expect(calls, 3);
         expect(
-          h.container.read(unifiedUpdatesProvider),
-          isA<AsyncData<List<UpdateInfo>>>(),
+          h.container.read(unifiedUpdatesResultProvider),
+          isA<AsyncData<CheckUpdatesResult>>(),
         );
       },
     );
@@ -325,10 +339,10 @@ void main() {
   group('foreground resume', () {
     test('fresh last check → no invalidate', () async {
       final h = _makeScheduler();
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       h.timers.advance(const Duration(seconds: 31));
       // Staggered poll completes → the last completed check is fresh.
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(h.fetchCount, 2);
 
       h.scheduler.onResumed();
@@ -337,7 +351,7 @@ void main() {
     });
 
     test('stale last check → one invalidate', () async {
-      final gate = Completer<List<UpdateInfo>>();
+      final gate = Completer<CheckUpdatesResult>();
       var calls = 0;
       final h = _makeScheduler(
         fetch: () {
@@ -346,13 +360,15 @@ void main() {
           // completes with a value after the initial one, so the last
           // completed check goes stale while nothing is in flight.
           if (calls == 2) return gate.future;
-          return Future.value(const []);
+          return Future.value(
+            const CheckUpdatesResult(updates: [], partialBackendIds: []),
+          );
         },
       );
 
       // A check starts and hangs through the staggered poll and a full
       // interval tick (both ticks correctly skip the in-flight fetch).
-      h.container.invalidate(unifiedUpdatesProvider);
+      h.container.invalidate(unifiedUpdatesResultProvider);
       await _pump();
       expect(calls, 2);
       h.timers.advance(const Duration(seconds: 31));
@@ -366,7 +382,7 @@ void main() {
       gate.completeError(StateError('boom'));
       await _pump();
       h.scheduler.onResumed();
-      await h.container.read(unifiedUpdatesProvider.future);
+      await h.container.read(unifiedUpdatesResultProvider.future);
       expect(calls, 3);
 
       // ...and a second resume with the fresh check is a no-op.

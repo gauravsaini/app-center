@@ -72,7 +72,9 @@ class UnifiedManagePage extends ConsumerWidget {
                   itemBuilder: (context, index) =>
                       _InstalledAppTile(app: apps[index]),
                 ),
-          error: (error, stack) => SliverToBoxAdapter(
+          error: (error, stack) => IntrinsicHeight(
+            // ErrorView's Spacers need bounded height; IntrinsicHeight
+            // sizes it to its content inside the unbounded sliver.
             child: ErrorView(
               error: error,
               onRetry: () => ref.invalidate(unifiedInstalledProvider),

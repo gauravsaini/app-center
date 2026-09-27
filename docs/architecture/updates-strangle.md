@@ -181,7 +181,7 @@ final unifiedUpdatesProvider = FutureProvider<List<UpdateInfo>>(
 
 - For each `UpdateInfo` in the provider's value, start a host update
   operation for `update.identity` via the host engine
-  (`performOperation(OperationKind.update, identity)`), honoring
+  (`enqueue(OperationKind.update, identity)`), honoring
   `BackendCapability.update` advertisement as the host does today.
 - Partial-failure posture: a failed start on one update does not
   abort the others; report per-update outcome where the section

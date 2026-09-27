@@ -102,10 +102,13 @@ class UpdatePollScheduler extends Notifier<void> {
       _timer?.cancel();
       _timer = null;
     });
+    if (!_enabled) return;
     // A completed check resets the staleness counter — covers periodic
     // polls, manual refreshes, and update-all invalidations alike. A
     // refresh still in flight (or an error, which keeps the previous
     // value as AsyncError) does not reset: the check isn't done yet.
+    // Subscribed only while enabled: otherwise merely watching the
+    // scheduler would spin up the host and fire a check for nothing.
     ref.listen(unifiedUpdatesProvider, (_, next) {
       if (next is AsyncData &&
           !next.isLoading &&
@@ -114,7 +117,6 @@ class UpdatePollScheduler extends Notifier<void> {
         _periodsSinceCheck = 0;
       }
     });
-    if (!_enabled) return;
     _armStaggeredFirstPoll();
   }
 

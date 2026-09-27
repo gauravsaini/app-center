@@ -9,7 +9,7 @@ environment:
 dependencies:
   store_contracts:
     path: ../store_contracts
-  packagekit: ^0.2.7
+  dbus: ^0.7.6
 
 dev_dependencies:
   test: ^1.25.0

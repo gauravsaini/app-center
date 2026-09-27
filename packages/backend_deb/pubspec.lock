@@ -82,7 +82,7 @@ packages:
     source: hosted
     version: "3.0.7"
   dbus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: dbus
       sha256: a48d5da28e89bd02196e80d81ed8d7954923d00a0f4a68cc20b575038f023383
@@ -193,14 +193,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
-  packagekit:
-    dependency: "direct main"
-    description:
-      name: packagekit
-      sha256: "63a8bfa152fdd94a02f724b5ff66735c3e969d70e0029b5df2d7ea858ec02db1"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.7"
   path:
     dependency: transitive
     description:

@@ -14,3 +14,4 @@ library backend_appimage;
 export 'src/backend.dart';
 export 'src/identity.dart';
 export 'src/metadata.dart';
+export 'src/transport.dart';

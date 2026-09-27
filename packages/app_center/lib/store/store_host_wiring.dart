@@ -13,7 +13,6 @@
 library;
 
 import 'package:backend_appimage/backend_appimage.dart';
-import 'package:backend_appimage/src/transport.dart';
 import 'package:backend_deb/backend_deb.dart';
 import 'package:backend_flatpak/backend_flatpak.dart';
 import 'package:backend_snap/backend_snap.dart';

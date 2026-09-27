@@ -9,6 +9,7 @@
 /// contracts, and the wiring providers.
 library;
 
+import 'package:app_center/error/operation_error_l10n.dart';
 import 'package:app_center/l10n.dart';
 import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/store/store_operations.dart';
@@ -215,13 +216,33 @@ class _CompletedOutcome extends StatelessWidget {
       );
     }
     if (terminal is Failed) {
+      // The error icon keeps its retry tap-target role; the reason line
+      // sits beside it so a Failed speaks the same "icon + reason +
+      // retry" language as the updates rows (per-row-failure §6).
       return Align(
         alignment: Alignment.centerLeft,
-        child: IconButton(
-          icon: const Icon(YaruIcons.error, size: 16),
-          onPressed: onRetry,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(YaruIcons.error, size: 16),
+              onPressed: onRetry,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                operationFailureReason(
+                  terminal.error,
+                  AppLocalizations.of(context),
+                ),
+                style: Theme.of(context).textTheme.bodySmall,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       );
     }

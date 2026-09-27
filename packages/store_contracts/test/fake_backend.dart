@@ -6,14 +6,16 @@ import 'dart:async';
 
 import 'package:store_contracts/store_contracts.dart';
 
-AppInfo _fakeApp(String nativeId, String name) => AppInfo(
-  identity: AppIdentity(backendId: 'fake', nativeId: nativeId),
-  name: name,
-  summary: 'A fake app for the contract exam.',
-  iconUrl: '',
-  source: AppSource.unknown,
-  version: '1.0',
-);
+AppInfo _fakeApp(String nativeId, String name, [IdentitySignal? signal]) =>
+    AppInfo(
+      identity: AppIdentity(backendId: 'fake', nativeId: nativeId),
+      name: name,
+      summary: 'A fake app for the contract exam.',
+      iconUrl: '',
+      source: AppSource.unknown,
+      version: '1.0',
+      identitySignal: signal,
+    );
 
 class FakeStoreBackend extends StoreBackend {
   /// When true, install() drives to Failed(NetworkException).
@@ -97,7 +99,16 @@ class FakeStoreBackend extends StoreBackend {
 
   @override
   Future<List<AppInfo>> listInstalled() async => [
-    _fakeApp('org.fake.InstalledApp1', 'Fake Installed App 1'),
+    // One app carries a well-formed signal so the exam's signal check
+    // exercises the non-null path, not just the null default.
+    _fakeApp(
+      'org.fake.InstalledApp1',
+      'Fake Installed App 1',
+      const IdentitySignal(
+        appstreamId: 'org.fake.InstalledApp1',
+        homepageUrl: 'https://example.com/fake1',
+      ),
+    ),
     _fakeApp('org.fake.InstalledApp2', 'Fake Installed App 2'),
   ];
 

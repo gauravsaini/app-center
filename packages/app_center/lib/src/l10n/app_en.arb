@@ -256,6 +256,7 @@
     "unifiedDetailsSnapBadge": "Snap",
     "unifiedDetailsDebBadge": "Deb",
     "unifiedDetailsFlatpakBadge": "Flatpak",
+    "unifiedAppFormatsChip": "{count, plural, =1{{count} format} other{{count} formats}}",
     "snapActionRevertLabel": "Revert update",
     "snapActionRevertingLabel": "Reverting update",
     "snapRevertConfirmTitle": "Revert to previous version?",

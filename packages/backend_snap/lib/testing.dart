@@ -210,6 +210,10 @@ class StubSnapdTransport extends SnapdTransport {
       version: '1.0',
       iconUrl: '',
       confinement: 'strict',
+      website: 'https://example.com/test-snap',
+      // Leading empty entry proves the first-non-empty rule
+      // (phase3-slice2.md §1): the signal must be io.example.TestSnap.
+      commonIds: ['', 'io.example.TestSnap'],
     ),
   ];
 
@@ -226,6 +230,8 @@ class StubSnapdTransport extends SnapdTransport {
         iconUrl: '',
         confinement: 'classic',
         installedVersion: '2.0',
+        website: 'https://example.com/installed-snap',
+        commonIds: ['io.example.InstalledSnap'],
       );
     }
     throw SnapdNotFoundException('snap "$name" not found');

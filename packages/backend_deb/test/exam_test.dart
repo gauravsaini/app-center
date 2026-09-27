@@ -94,6 +94,43 @@ void main() {
     });
   });
 
+  group('BackendDeb identity signals (phase3-slice2)', () {
+    test(
+      'getDetails harvests the Details url entry + AppDetails.homepage',
+      () async {
+        final backend = BackendDeb(transport: StubPackageKitTransport());
+        final details = await backend.getDetails(
+          const AppIdentity(backendId: 'deb', nativeId: 'test-deb'),
+        );
+        expect(
+          details.app.identitySignal!.homepageUrl,
+          'https://example.com/test-deb',
+        );
+        expect(details.homepage, 'https://example.com/test-deb');
+      },
+    );
+
+    test('listInstalled bulk path carries the url signal', () async {
+      final backend = BackendDeb(transport: StubPackageKitTransport());
+      final apps = await backend.listInstalled();
+      expect(apps, hasLength(1));
+      expect(
+        apps.first.identitySignal!.homepageUrl,
+        'https://example.com/installed-deb',
+      );
+    });
+
+    test(
+      'search path has no Details dict: signal is null, not empty',
+      () async {
+        final backend = BackendDeb(transport: StubPackageKitTransport());
+        final results = await backend.search('test').toList();
+        expect(results, hasLength(1));
+        expect(results.first.identitySignal, isNull);
+      },
+    );
+  });
+
   group('BackendDeb.listInstalled', () {
     test(
       'maps installed names to AppInfos with installedVersion set',

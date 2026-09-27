@@ -93,11 +93,15 @@ class DebRawDetails {
     required this.id,
     this.summary = '',
     this.description = '',
+    this.url = '',
   });
 
   final String id;
   final String summary;
   final String description;
+
+  /// The `url` dict entry — the homepage signal (phase3-slice2.md §1).
+  final String url;
 }
 
 class RealPackageKitTransport extends PackageKitTransport {
@@ -238,6 +242,7 @@ class RealPackageKitTransport extends PackageKitTransport {
                   id: dict['package-id']?.asString() ?? '',
                   summary: dict['summary']?.asString() ?? '',
                   description: dict['description']?.asString() ?? '',
+                  url: dict['url']?.asString() ?? '',
                 ),
               );
             case 'Finished':
@@ -363,6 +368,7 @@ class RealPackageKitTransport extends PackageKitTransport {
       description: d?.description ?? '',
       version: parsed?.version ?? '',
       installedVersion: null,
+      url: d?.url ?? '',
     );
   }
 
@@ -429,6 +435,7 @@ class RealPackageKitTransport extends PackageKitTransport {
       description: d?.description ?? '',
       version: id.version,
       installedVersion: e.installed ? id.version : null,
+      url: d?.url ?? '',
     );
   }
 

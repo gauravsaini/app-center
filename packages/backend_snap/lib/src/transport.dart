@@ -75,6 +75,8 @@ class SnapSummaryData {
     required this.iconUrl,
     required this.confinement,
     this.installedVersion,
+    this.website = '',
+    this.commonIds = const [],
   });
 
   final String name;
@@ -87,6 +89,13 @@ class SnapSummaryData {
   /// `strict`, `classic`, `devmode`.
   final String confinement;
   final String? installedVersion;
+
+  /// Store website (`Snap.website`), harvested for identity signals.
+  final String website;
+
+  /// AppStream component ids (`Snap.commonIds`), harvested for identity
+  /// signals (first non-empty wins, phase3-slice2.md §1).
+  final List<String> commonIds;
 }
 
 abstract class SnapdTransport {

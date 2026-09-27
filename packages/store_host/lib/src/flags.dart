@@ -32,7 +32,11 @@ class MapFeatureFlags implements FeatureFlags {
     'backend.flatpak.enabled': true,
     'backend.snap.enabled': true,
     'backend.deb.enabled': true,
-    'catalog.backend_order': 'flatpak,snap,deb',
+    // Preferred format order for variant ranking (HLD §6 rule 3).
+    // Extended to all six backends (phase3-slice2.md §3): backends not
+    // listed here rank after all listed ones, in registration order.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'catalog.backend_order': 'flatpak,snap,deb,appimage,rpm,pacman',
     'catalog.search_timeout_ms': 5000,
     // Stall watchdog default (docs/architecture/stall-watchdog.md §5):
     // 10 min. A 30s watchdog would false-positive against the 60s

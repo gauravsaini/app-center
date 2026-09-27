@@ -5,15 +5,19 @@
 /// services directly, never `backend_*`.
 ///
 /// ADR-009: the permissions section renders BEFORE any install action.
-/// The host deliberately does not merge cross-backend variants, so one
-/// page = one [AppIdentity]; when the host hands the page a [UnifiedApp]
-/// with several variants (future), a backend switcher keeps each
-/// format's card separate instead of merging them.
+/// When the host hands the page a [UnifiedApp] with several variants, the
+/// format switcher keeps each format's card separate. With
+/// `phase3.identity.enabled` and a resolved canonical id the switcher
+/// becomes the merged-card format picker (badge + version + size +
+/// installed state per format); otherwise it stays the legacy backend
+/// switcher, bit for bit.
 library;
 
 import 'package:app_center/error/error.dart';
 import 'package:app_center/l10n.dart';
 import 'package:app_center/layout.dart';
+import 'package:app_center/search/search_provider.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:app_center/store/store_operations.dart';
 import 'package:app_center/widgets/widgets.dart';
 import 'package:flutter/material.dart';
@@ -52,9 +56,46 @@ class _UnifiedDetailsPageState extends ConsumerState<UnifiedDetailsPage> {
     return _variants.isNotEmpty ? _variants.first : null;
   }
 
+  /// Phase 3 merged card: the identity flag is on AND the host resolved
+  /// this app to a canonical id. Only then does the format picker (and
+  /// the preference persistence) apply — flag off or unresolved keeps
+  /// today's backend switcher bit for bit.
+  bool get _merged =>
+      ref.watch(identityEnabledProvider) && widget.app?.canonicalId != null;
+
+  /// Variant selection.
+  ///
+  /// Always updates the local selection (header, switcher, and details
+  /// follow the picked format). On a merged card this additionally
+  /// persists the per-app source preference so the host reorders
+  /// `preferred` on the next search (phase3-slice2.md §5) — the install
+  /// button itself is untouched. The preference write is fire-and-forget:
+  /// the picker selection updates immediately.
+  void _onVariantSelected(AppIdentity id) {
+    final canonicalId = widget.app?.canonicalId;
+    if (_merged && canonicalId != null) {
+      _persistPreferredSource(canonicalId, id.backendId);
+    }
+    setState(() => _selected = id);
+  }
+
+  /// Persists the per-app source preference (phase3-slice2.md §4) and
+  /// invalidates the unified search so the host reorders and `preferred`
+  /// becomes the pick. Unknown backend ids are stored verbatim and
+  /// ignored at ordering time (host contract) — this never throws on
+  /// user data.
+  Future<void> _persistPreferredSource(
+    CanonicalAppId id,
+    String backendId,
+  ) async {
+    await ref.read(storeHostProvider).setPreferredSource(id, backendId);
+    if (mounted) ref.invalidate(unifiedSearchProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
     final details = ref.watch(unifiedAppDetailsProvider(_selected));
+    final merged = _merged;
     return ResponsiveLayoutBuilder(
       builder: (context) {
         final layout = ResponsiveLayout.of(context);
@@ -80,7 +121,8 @@ class _UnifiedDetailsPageState extends ConsumerState<UnifiedDetailsPage> {
                     _VariantSwitcher(
                       variants: _variants,
                       selected: _selected,
-                      onSelect: (id) => setState(() => _selected = id),
+                      merged: merged,
+                      onSelect: _onVariantSelected,
                     ),
                   ],
                   const SizedBox(height: kPagePadding),
@@ -89,10 +131,14 @@ class _UnifiedDetailsPageState extends ConsumerState<UnifiedDetailsPage> {
                     loading: () => const Center(
                       child: YaruCircularProgressIndicator(),
                     ),
-                    error: (error, _) => ErrorView(
-                      error: error,
-                      onRetry: () => ref.invalidate(
-                        unifiedAppDetailsProvider(_selected),
+                    // ErrorView's Spacers need bounded height; IntrinsicHeight
+                    // sizes it to its content inside the unbounded scroll view.
+                    error: (error, _) => IntrinsicHeight(
+                      child: ErrorView(
+                        error: error,
+                        onRetry: () => ref.invalidate(
+                          unifiedAppDetailsProvider(_selected),
+                        ),
                       ),
                     ),
                   ),
@@ -195,16 +241,23 @@ class _BackendBadge extends StatelessWidget {
 
 /// Backend switcher: one entry per variant, no merging. Only rendered
 /// when the host actually grouped several variants.
+///
+/// [merged] turns it into the Phase 3 format picker: each chip shows the
+/// source badge, version, humanized size (omitted when unknown — never
+/// fabricated), and an installed check icon. False keeps the legacy
+/// badge-only switcher bit for bit.
 class _VariantSwitcher extends StatelessWidget {
   const _VariantSwitcher({
     required this.variants,
     required this.selected,
     required this.onSelect,
+    this.merged = false,
   });
 
   final List<AppInfo> variants;
   final AppIdentity selected;
   final ValueChanged<AppIdentity> onSelect;
+  final bool merged;
 
   @override
   Widget build(BuildContext context) {
@@ -222,12 +275,35 @@ class _VariantSwitcher extends StatelessWidget {
           children: [
             for (final v in variants)
               ChoiceChip(
-                label: Text(_badgeLabel(context, v.source)),
+                label: merged
+                    ? _formatChipLabel(context, v)
+                    : Text(_badgeLabel(context, v.source)),
                 selected: v.identity == selected,
                 onSelected: (_) => onSelect(v.identity),
               ),
           ],
         ),
+      ],
+    );
+  }
+
+  /// Merged-card chip content: source badge, version, humanized size or
+  /// omitted when null (never fabricated), installed check icon.
+  Widget _formatChipLabel(BuildContext context, AppInfo variant) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _BackendBadge(source: variant.source),
+        const SizedBox(width: 6),
+        Text(variant.version ?? '—'),
+        if (variant.installSizeBytes != null) ...[
+          const SizedBox(width: 6),
+          Text(context.formatByteSize(variant.installSizeBytes!)),
+        ],
+        if (variant.isInstalled) ...[
+          const SizedBox(width: 4),
+          const Icon(YaruIcons.ok, size: 16),
+        ],
       ],
     );
   }

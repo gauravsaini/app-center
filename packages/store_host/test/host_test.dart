@@ -215,7 +215,10 @@ void main() {
       expect(flags.isEnabled('backend.flatpak.enabled'), isTrue);
       expect(flags.isEnabled('backend.snap.enabled'), isTrue);
       expect(flags.isEnabled('backend.deb.enabled'), isTrue);
-      expect(flags.getString('catalog.backend_order'), 'flatpak,snap,deb');
+      expect(
+        flags.getString('catalog.backend_order'),
+        'flatpak,snap,deb,appimage,rpm,pacman',
+      );
       expect(flags.isEnabled('no.such.key'), isFalse);
       expect(flags.getInt('catalog.search_timeout_ms'), 5000);
       expect(flags.getInt('no.such.key'), 0);

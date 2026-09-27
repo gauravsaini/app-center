@@ -55,6 +55,42 @@ void main() {
     });
   });
 
+  group('BackendFlatpak identity signals (phase3-slice2)', () {
+    test(
+      'search reports the nativeId verbatim as the appstream signal',
+      () async {
+        final backend = BackendFlatpak(transport: StubFlatpakTransport());
+        final results = await backend.search('test').toList();
+        expect(results, hasLength(1));
+        final signal = results.first.identitySignal!;
+        expect(signal.appstreamId, 'org.test.App');
+        // No Homepage on the search wire format.
+        expect(signal.homepageUrl, isNull);
+      },
+    );
+
+    test('getDetails harvests Homepage + verbatim appstream id', () async {
+      final backend = BackendFlatpak(transport: StubFlatpakTransport());
+      final details = await backend.getDetails(
+        const AppIdentity(backendId: 'flatpak', nativeId: 'org.test.App'),
+      );
+      expect(details.app.identitySignal!.appstreamId, 'org.test.App');
+      expect(
+        details.app.identitySignal!.homepageUrl,
+        'https://example.com/test-app',
+      );
+      expect(details.homepage, 'https://example.com/test-app');
+    });
+
+    test('listInstalled reports the verbatim appstream signal', () async {
+      final backend = BackendFlatpak(transport: StubFlatpakTransport());
+      final apps = await backend.listInstalled();
+      expect(apps, hasLength(2));
+      expect(apps.first.identitySignal!.appstreamId, 'org.test.Installed');
+      expect(apps[1].identitySignal!.appstreamId, 'org.test.Second');
+    });
+  });
+
   group('BackendFlatpak.listInstalled', () {
     test('parses flatpak list rows to AppInfos with versions set', () async {
       final backend = BackendFlatpak(transport: StubFlatpakTransport());

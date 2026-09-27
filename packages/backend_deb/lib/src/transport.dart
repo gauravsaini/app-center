@@ -29,6 +29,7 @@ class DebPackageData {
     required this.description,
     required this.version,
     this.installedVersion,
+    this.url = '',
   });
 
   final String name;
@@ -36,6 +37,10 @@ class DebPackageData {
   final String description;
   final String version;
   final String? installedVersion;
+
+  /// Homepage from the PackageKit `Details` `url` entry — the identity
+  /// signal (phase3-slice2.md §1). Empty = the wire had nothing.
+  final String url;
 }
 
 /// Coarse transaction phase, in plain Dart.

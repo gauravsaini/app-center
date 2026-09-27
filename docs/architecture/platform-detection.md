@@ -142,9 +142,10 @@ isEnabled(key) = _values[key] ?? _seeded[key] ?? _defaults[key] ?? false
 - Additive to `flags.dart`; existing readers untouched; `isEnabled` /
   `getInt` / `getString` semantics unchanged for unseeded keys.
 
-`catalog.backend_order` (`flatpak,snap,deb`) is left alone — it is a
-reserved flag, not yet consumed (host-wiring.md), so seeding it buys
-nothing.
+`catalog.backend_order` is consumed by the Phase 3 identity merge path
+(phase3-identity-hld.md §6): when `phase3.identity.enabled` merges
+same-canonical-app variants, unlisted backends rank after listed ones.
+Default: `flatpak,snap,deb,appimage,rpm,pacman`.
 
 ### 4. Probe caching — DECIDED: host-side per-backend memoization, 30s TTL
 

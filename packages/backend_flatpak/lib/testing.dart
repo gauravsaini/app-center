@@ -47,6 +47,7 @@ class StubFlatpakTransport extends FlatpakTransport {
         'Version: 1.0',
         'Summary: a test app',
         'Description: A longer description of the test app.',
+        'Homepage: https://example.com/test-app',
       ];
     }
     if (args.first == 'list') {

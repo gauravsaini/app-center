@@ -90,6 +90,9 @@ class BackendDeb extends StoreBackend {
     source: AppSource.deb,
     version: p.version.isEmpty ? null : p.version,
     installedVersion: p.installedVersion,
+    // Identity signal from the PackageKit Details `url` entry
+    // (phase3-slice2.md §1). Empty = the wire had nothing.
+    identitySignal: p.url.isEmpty ? null : IdentitySignal(homepageUrl: p.url),
   );
 
   @override
@@ -106,6 +109,7 @@ class BackendDeb extends StoreBackend {
       app: _toAppInfo(p),
       description: p.description,
       permissions: _debPermissions,
+      homepage: p.url.isEmpty ? null : p.url,
     );
   }
 
@@ -246,6 +250,7 @@ class BackendDeb extends StoreBackend {
       source: info.source,
       version: info.version,
       installedVersion: info.version ?? 'unknown',
+      identitySignal: info.identitySignal,
     );
   }
 

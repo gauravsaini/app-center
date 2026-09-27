@@ -84,6 +84,29 @@ void main() {
       },
     );
 
+    test(
+      'catches a backend that emits an empty-string identity signal',
+      () async {
+        // The exam must actually bite: empty means absent — a backend
+        // emitting '' as a signal field fails (phase3-slice2.md §2).
+        await expectLater(
+          runContractExam(
+            'fake-empty-signal',
+            _EmptySignalBackend.new,
+            installTarget: const AppIdentity(
+              backendId: 'fake',
+              nativeId: 'org.fake.App',
+            ),
+            unknownTarget: const AppIdentity(
+              backendId: 'fake',
+              nativeId: 'no.such.App',
+            ),
+          ),
+          throwsA(isA<ExamFailure>()),
+        );
+      },
+    );
+
     test('additive default: non-overriding backend gets []', () async {
       // A backend that never overrides listInstalled() must compile
       // unchanged and report nothing installed (LLD §10 minor path).
@@ -161,6 +184,22 @@ class _WrongIdentityBackend extends FakeStoreBackend {
       summary: '',
       iconUrl: '',
       source: AppSource.unknown,
+    ),
+  ];
+}
+
+/// A backend emitting an empty-string identity signal field — illegal:
+/// empty means absent (the backend must emit null, never '').
+class _EmptySignalBackend extends FakeStoreBackend {
+  @override
+  Future<List<AppInfo>> listInstalled() async => const [
+    AppInfo(
+      identity: AppIdentity(backendId: 'fake', nativeId: 'org.fake.Empty'),
+      name: 'Empty Signal App',
+      summary: '',
+      iconUrl: '',
+      source: AppSource.unknown,
+      identitySignal: IdentitySignal(homepageUrl: ''),
     ),
   ];
 }

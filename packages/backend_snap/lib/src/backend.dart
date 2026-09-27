@@ -77,15 +77,31 @@ class BackendSnap extends StoreBackend {
     return controller.stream;
   }
 
-  AppInfo _toAppInfo(SnapSummaryData s) => AppInfo(
-    identity: AppIdentity(backendId: id, nativeId: s.name),
-    name: s.title.isEmpty ? s.name : s.title,
-    summary: s.summary,
-    iconUrl: s.iconUrl,
-    source: AppSource.snap,
-    version: s.version.isEmpty ? null : s.version,
-    installedVersion: s.installedVersion,
-  );
+  AppInfo _toAppInfo(SnapSummaryData s) {
+    // Identity signals, harvested from data already in hand
+    // (phase3-slice2.md §1): first non-empty commonId wins; empty
+    // strings mean absent — never a signal.
+    String? appstreamId;
+    for (final id in s.commonIds) {
+      if (id.isNotEmpty) {
+        appstreamId = id;
+        break;
+      }
+    }
+    final homepageUrl = s.website.isEmpty ? null : s.website;
+    return AppInfo(
+      identity: AppIdentity(backendId: id, nativeId: s.name),
+      name: s.title.isEmpty ? s.name : s.title,
+      summary: s.summary,
+      iconUrl: s.iconUrl,
+      source: AppSource.snap,
+      version: s.version.isEmpty ? null : s.version,
+      installedVersion: s.installedVersion,
+      identitySignal: appstreamId == null && homepageUrl == null
+          ? null
+          : IdentitySignal(appstreamId: appstreamId, homepageUrl: homepageUrl),
+    );
+  }
 
   @override
   Future<AppDetails> getDetails(AppIdentity id) async {
@@ -101,6 +117,7 @@ class BackendSnap extends StoreBackend {
       app: _toAppInfo(s),
       description: s.description,
       permissions: _permissionsFor(s.confinement),
+      homepage: s.website.isEmpty ? null : s.website,
     );
   }
 
@@ -275,6 +292,7 @@ class BackendSnap extends StoreBackend {
       source: info.source,
       version: info.version,
       installedVersion: info.version ?? 'unknown',
+      identitySignal: info.identitySignal,
     );
   }
 

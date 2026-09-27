@@ -141,6 +141,37 @@ void main() {
         throwsA(isA<AppNotFoundException>()),
       );
     });
+
+    test(
+      'listInstalled passes the existing homepage through as the signal',
+      () async {
+        final backend = _create();
+        final apps = await backend.listInstalled();
+        final byCard = {for (final a in apps) a.identity.nativeId: a};
+        expect(
+          byCard[_installedId]!.identitySignal!.homepageUrl,
+          'https://www.mozilla.org/firefox/',
+        );
+        // The glibc fixture has no homepage: null, never ''.
+        expect(byCard[_glibcId]!.identitySignal, isNull);
+      },
+    );
+
+    test('getDetails passes the homepage through as the signal', () async {
+      final backend = _create();
+      final details = await backend.getDetails(_id(_installId));
+      expect(details.app.identitySignal!.homepageUrl, 'https://www.vim.org/');
+      expect(details.homepage, 'https://www.vim.org/');
+    });
+
+    test('search path has no homepage on the wire: signal is null', () async {
+      final backend = _create();
+      final results = await backend.search('firefox').toList();
+      expect(results, isNotEmpty);
+      for (final r in results) {
+        expect(r.identitySignal, isNull);
+      }
+    });
   });
 
   group('package-id parser', () {

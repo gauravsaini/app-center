@@ -133,6 +133,9 @@ class BackendFlatpak extends StoreBackend {
       summary: '',
       iconUrl: '',
       source: AppSource.flatpak,
+      // The flatpak id IS the AppStream component id, verbatim
+      // (phase3-slice2.md §1). No Homepage on the search wire format.
+      identitySignal: IdentitySignal(appstreamId: appId),
     );
   }
 
@@ -156,6 +159,13 @@ class BackendFlatpak extends StoreBackend {
     final permissions = installed
         ? await _permissions(ref)
         : const <Permission>[];
+    // Identity signals from data already in hand (phase3-slice2.md §1):
+    // the flatpak id IS the AppStream component id (verbatim), and
+    // `flatpak info`/`remote-info` emit Homepage in the parsed fields.
+    final homepageField = fields['Homepage'];
+    final homepageUrl = homepageField == null || homepageField.isEmpty
+        ? null
+        : homepageField;
     final app = AppInfo(
       identity: id,
       name: fields['Name'] ?? fields['Title'] ?? ref.id,
@@ -164,11 +174,16 @@ class BackendFlatpak extends StoreBackend {
       source: AppSource.flatpak,
       version: fields['Version'],
       installedVersion: installed ? fields['Version'] : null,
+      identitySignal: IdentitySignal(
+        appstreamId: id.nativeId,
+        homepageUrl: homepageUrl,
+      ),
     );
     return AppDetails(
       app: app,
       description: fields['Description'] ?? fields['Summary'] ?? '',
       permissions: permissions,
+      homepage: homepageUrl,
     );
   }
 
@@ -394,6 +409,9 @@ class BackendFlatpak extends StoreBackend {
         source: AppSource.flatpak,
         version: version.isEmpty ? null : version,
         installedVersion: version.isEmpty ? 'unknown' : version,
+        // The flatpak id IS the AppStream component id, verbatim
+        // (phase3-slice2.md §1). No Homepage on the `list` wire format.
+        identitySignal: IdentitySignal(appstreamId: appId),
       );
 
   @override

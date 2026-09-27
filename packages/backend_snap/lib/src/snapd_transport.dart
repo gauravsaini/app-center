@@ -39,6 +39,8 @@ class PackageSnapdTransport extends SnapdTransport {
       version: s.version,
       iconUrl: iconUrl,
       confinement: s.confinement.name,
+      website: s.website ?? '',
+      commonIds: List.of(s.commonIds),
     );
   }
 

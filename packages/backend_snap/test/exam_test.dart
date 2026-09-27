@@ -86,6 +86,49 @@ void main() {
     });
   });
 
+  group('BackendSnap identity signals (phase3-slice2)', () {
+    test('search harvests website + first non-empty commonId', () async {
+      final backend = BackendSnap(transport: StubSnapdTransport());
+      final results = await backend.search('test').toList();
+      expect(results, hasLength(1));
+      final signal = results.first.identitySignal!;
+      expect(signal.homepageUrl, 'https://example.com/test-snap');
+      // The fixture's first commonId is '' — the first NON-EMPTY wins.
+      expect(signal.appstreamId, 'io.example.TestSnap');
+    });
+
+    test('getDetails populates AppDetails.homepage from website', () async {
+      final backend = BackendSnap(transport: StubSnapdTransport());
+      final details = await backend.getDetails(
+        const AppIdentity(backendId: 'snap', nativeId: 'test-snap'),
+      );
+      expect(details.homepage, 'https://example.com/test-snap');
+      expect(details.app.identitySignal!.appstreamId, 'io.example.TestSnap');
+    });
+
+    test(
+      'listInstalled carries signals through the installed mapping',
+      () async {
+        final backend = BackendSnap(transport: StubSnapdTransport());
+        final apps = await backend.listInstalled();
+        expect(apps, hasLength(1));
+        final signal = apps.first.identitySignal!;
+        expect(signal.homepageUrl, 'https://example.com/installed-snap');
+        expect(signal.appstreamId, 'io.example.InstalledSnap');
+      },
+    );
+
+    test(
+      'snap without wire signals reports null, never empty strings',
+      () async {
+        final backend = BackendSnap(transport: _NoSignalSnapTransport());
+        final results = await backend.search('test').toList();
+        expect(results, hasLength(1));
+        expect(results.first.identitySignal, isNull);
+      },
+    );
+  });
+
   group('BackendSnap.listInstalled', () {
     test(
       'maps installed names to AppInfos with installedVersion set',
@@ -152,4 +195,21 @@ class _DeadSnapdTransport extends StubSnapdTransport {
 class _EmptySnapdTransport extends StubSnapdTransport {
   @override
   Future<List<String>> installedNames() async => const [];
+}
+
+/// A snap with no website/commonIds on the wire: the backend must
+/// report a null signal, never empty-string fields.
+class _NoSignalSnapTransport extends StubSnapdTransport {
+  @override
+  Future<List<SnapSummaryData>> find(String query) async => const [
+    SnapSummaryData(
+      name: 'plain-snap',
+      title: 'Plain Snap',
+      summary: 'no wire signals',
+      description: '',
+      version: '1.0',
+      iconUrl: '',
+      confinement: 'strict',
+    ),
+  ];
 }

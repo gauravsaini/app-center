@@ -3,12 +3,17 @@
 library;
 
 import 'backend.dart';
+import 'canonical_identity.dart';
 import 'identity.dart';
 
 /// One app across formats (ADR-007): the merged view the UI renders
 /// as a single card with a format picker.
 class UnifiedApp {
-  const UnifiedApp({required this.groupId, required this.variants});
+  const UnifiedApp({
+    required this.groupId,
+    required this.variants,
+    this.canonicalId,
+  });
 
   /// Stable merge key for this app group.
   final String groupId;
@@ -16,6 +21,12 @@ class UnifiedApp {
   /// Per-format variants, ordered by host preference
   /// (installed first → exact name → rating → `catalog.backend_order`).
   final List<AppInfo> variants;
+
+  /// Cross-format canonical id for merged groups (phase3-slice2.md §3).
+  /// Null = unresolved = today's per-backend grouping. Set by the host
+  /// when `phase3.identity.enabled` resolves the group; the UI reads it
+  /// for the merged card and format picker.
+  final CanonicalAppId? canonicalId;
 
   /// The variant the Install button acts on by default.
   AppInfo get preferred => variants.first;

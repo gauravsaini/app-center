@@ -97,6 +97,11 @@ class BackendRpm extends StoreBackend {
     source: AppSource.rpm, // NEVER deb (HLD §5)
     version: displayVersion(p.evr),
     installedVersion: p.installed ? (p.installedEvr ?? p.evr) : null,
+    // Identity signal from the homepage already flowing end-to-end
+    // (phase3-slice2.md §1). Empty = the wire had nothing.
+    identitySignal: p.homepage.isEmpty
+        ? null
+        : IdentitySignal(homepageUrl: p.homepage),
   );
 
   @override

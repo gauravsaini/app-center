@@ -71,6 +71,7 @@ class StubPackageKitTransport extends PackageKitTransport {
       summary: 'a test deb',
       description: 'A longer description of the test deb.',
       version: '1.0',
+      url: 'https://example.com/test-deb',
     ),
     'installed-deb': const DebPackageData(
       name: 'installed-deb',
@@ -78,6 +79,7 @@ class StubPackageKitTransport extends PackageKitTransport {
       description: 'Installed, unsandboxed.',
       version: '2.0',
       installedVersion: '2.0',
+      url: 'https://example.com/installed-deb',
     ),
   };
 
@@ -89,6 +91,7 @@ class StubPackageKitTransport extends PackageKitTransport {
       description: 'Installed, unsandboxed.',
       version: '2.0',
       installedVersion: '2.0',
+      url: 'https://example.com/installed-deb',
     ),
   ];
 

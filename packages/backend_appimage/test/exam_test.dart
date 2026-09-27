@@ -111,6 +111,19 @@ void main() {
       expect(await collect('zzz-no-such-app'), isEmpty);
     });
 
+    test('identitySignal stays null: no sanctioned homepage key, no verified '
+        'hashes (phase3-slice2.md §1 — skip, never fake)', () async {
+      final backend = _create();
+      for (final a in await backend.search('app').toList()) {
+        expect(a.identitySignal, isNull);
+      }
+      for (final a in await backend.listInstalled()) {
+        expect(a.identitySignal, isNull);
+      }
+      final details = await backend.getDetails(_id(_shaA));
+      expect(details.app.identitySignal, isNull);
+    });
+
     test(
       'install adopt flow copies, integrates, and writes a manifest',
       () async {

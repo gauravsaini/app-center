@@ -99,6 +99,9 @@ class BackendPacman extends StoreBackend {
     source: AppSource.pacman, // NEVER deb (research D10)
     version: displayVersion(p.version),
     installedVersion: p.installed ? (p.installedVersion ?? p.version) : null,
+    // Identity signal from the URL already flowing end-to-end
+    // (phase3-slice2.md §1). Empty = the wire had nothing.
+    identitySignal: p.url.isEmpty ? null : IdentitySignal(homepageUrl: p.url),
   );
 
   @override

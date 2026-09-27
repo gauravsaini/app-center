@@ -60,6 +60,7 @@ Future<void> runContractExam(
   }
   await _recoverInFlight('$prefix recoverInFlight', create);
   await _listInstalled('$prefix listInstalled', create);
+  await _identitySignalsWellFormed('$prefix identity signals', create);
 }
 
 Future<void> _isAvailable(String check, StoreBackend Function() create) async {
@@ -381,6 +382,71 @@ Future<void> _listInstalled(
         check,
         'installed identity ${app.identity} carries backendId '
         '${app.identity.backendId} != ${backend.id}',
+      );
+    }
+  }
+}
+
+/// Phase 3 slice 2 (phase3-slice2.md §2): identity signals ride on
+/// [AppInfo], harvested from data the backend already had — never
+/// fabricated. Well-formedness over the backend's search/listInstalled
+/// fixtures: a non-null signal never carries an empty-string field
+/// (empty means absent — the backend must emit null, never '').
+/// The null default is legal (backends that report nothing, e.g.
+/// appimage, pass trivially).
+Future<void> _identitySignalsWellFormed(
+  String check,
+  StoreBackend Function() create,
+) async {
+  final backend = create();
+  final apps = <AppInfo>[];
+  try {
+    apps.addAll(
+      await backend
+          .search('a')
+          .toList()
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => _fail(check, 'search() hung'),
+          ),
+    );
+  } on StoreException catch (e) {
+    _assertTypedError(check, e);
+    return;
+  } catch (e) {
+    _fail(check, 'search threw raw ${e.runtimeType}, not a StoreException');
+  }
+  try {
+    apps.addAll(
+      await backend.listInstalled().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => _fail(check, 'listInstalled() hung'),
+      ),
+    );
+  } on StoreException catch (e) {
+    _assertTypedError(check, e);
+    return;
+  } catch (e) {
+    _fail(
+      check,
+      'listInstalled threw raw ${e.runtimeType}, not a StoreException',
+    );
+  }
+  for (final app in apps) {
+    final signal = app.identitySignal;
+    if (signal == null) continue;
+    if (signal.appstreamId != null && signal.appstreamId!.isEmpty) {
+      _fail(
+        check,
+        'identitySignal.appstreamId is empty for ${app.identity}; '
+        'empty means absent (emit null, never \'\')',
+      );
+    }
+    if (signal.homepageUrl != null && signal.homepageUrl!.isEmpty) {
+      _fail(
+        check,
+        'identitySignal.homepageUrl is empty for ${app.identity}; '
+        'empty means absent (emit null, never \'\')',
       );
     }
   }

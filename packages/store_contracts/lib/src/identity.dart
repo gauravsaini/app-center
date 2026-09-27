@@ -3,6 +3,8 @@
 /// merged into [UnifiedApp] by the host.
 library;
 
+import 'canonical_identity.dart';
+
 /// Globally unique app reference: backend id + the backend's own id.
 ///
 /// Example: `AppIdentity(backendId: 'flatpak', nativeId: 'org.videolan.VLC')`.
@@ -64,6 +66,7 @@ class AppInfo {
     this.installSizeBytes,
     this.rating,
     this.updateAvailable,
+    this.identitySignal,
   });
 
   final AppIdentity identity;
@@ -83,6 +86,12 @@ class AppInfo {
   /// Null = no data (ADR-005: ratings degraded in Phase 0).
   final double? rating;
   final bool? updateAvailable;
+
+  /// Identity signals harvested from data the backend already had when
+  /// building this AppInfo (phase3-slice2.md §1). Null = backend reports
+  /// nothing. Never fabricated: only wire-level values, verbatim —
+  /// empty strings are normalized to null by the backend, never emitted.
+  final IdentitySignal? identitySignal;
 
   bool get isInstalled => installedVersion != null;
 }

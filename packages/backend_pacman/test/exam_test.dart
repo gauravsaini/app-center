@@ -152,6 +152,30 @@ void main() {
       );
     });
 
+    test('getDetails passes the existing URL through as the signal', () async {
+      final backend = _create();
+      final vim = await backend.getDetails(_id(_installId));
+      expect(vim.app.identitySignal!.homepageUrl, 'https://www.vim.org');
+      final firefox = await backend.getDetails(_id(_installedId));
+      expect(
+        firefox.app.identitySignal!.homepageUrl,
+        'https://www.mozilla.org/firefox/',
+      );
+    });
+
+    test(
+      'search/listInstalled wire formats have no URL: signal is null',
+      () async {
+        final backend = _create();
+        for (final r in await backend.search('firefox').toList()) {
+          expect(r.identitySignal, isNull);
+        }
+        for (final a in await backend.listInstalled()) {
+          expect(a.identitySignal, isNull);
+        }
+      },
+    );
+
     test('getDetails of corrupt id throws AppNotFoundException', () async {
       final backend = _create();
       expect(

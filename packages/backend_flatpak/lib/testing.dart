@@ -49,6 +49,14 @@ class StubFlatpakTransport extends FlatpakTransport {
         'Description: A longer description of the test app.',
       ];
     }
+    if (args.first == 'list') {
+      // `list --app --columns=application,name,version`: tab-separated,
+      // no header row.
+      return [
+        'org.test.Installed\tTest Installed\t2.0',
+        'org.test.Second\tSecond App\t1.5',
+      ];
+    }
     throw FlatpakCommandException(args, 1, 'stub: unexpected run $args');
   }
 

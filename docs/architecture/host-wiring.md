@@ -63,9 +63,11 @@ results. Missing backends are a normal runtime condition.
 - **No cross-backend merging.** One `AppInfo` → one `UnifiedApp` card.
   The thesis prefers duplicate cards over unsafe merges; real merging
   arrives with the community metadata index, not heuristics.
-- **`installed()` returns `[]`.** Needs a `StoreBackend.listInstalled()`
-  contract addition (minor SemVer bump + exam coverage) — a later,
-  deliberate contract change, not a quiet hack.
+- **`installed()` is wired, not merged.** `StoreHost.installed()` fans out
+  over `StoreBackend.listInstalled()` (contract 0.2.0; default `[]` for
+  backends that don't implement it) and maps one `AppInfo` → one
+  `UnifiedApp` card, same as `search()`. One backend failing degrades to
+  partial results — `installed()` never throws.
 - **`checkUpdates()` is uncached and unstaggered.** The contract says it
   must not run on the UI critical path; scheduling (stagger, cache,
   background) is the app's concern when it wires the Updates page.
@@ -78,4 +80,8 @@ results. Missing backends are a normal runtime condition.
 2. Register it in the composition root; Explore page reads from host.
 3. `backend_deb` via PackageKit, same exam.
 4. `StoreBackend.listInstalled()` contract addition → real `installed()`.
+   DONE in the manage-strangle slice (contract 0.2.0, exam coverage,
+   `StoreHost.installed()` wired, `pages.manage.unified` flag added).
+   Remaining: real backend `listInstalled()` implementations (snap/deb/
+   flatpak slices, each exam-first) and the Manage-page UI flip.
 5. Merge heuristics only when the metadata index can back them.

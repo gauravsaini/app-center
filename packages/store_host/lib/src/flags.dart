@@ -5,6 +5,10 @@
 /// - `catalog.backend_order` — preferred format order for dedup ranking.
 /// - `catalog.search_timeout_ms`, `engine.stall_timeout_ms`,
 ///   `engine.max_concurrent_per_backend`, `engine.history_ttl_ms`.
+/// - `pages.<page>.unified` — per-page strangler switch: `true` means the
+///   page reads from [StoreHost], `false` keeps the legacy path.
+///   Owner: `libreapp-center`; removal date: `2027-06-30` — every flag
+///   needs an owner and a removal date before it ships to users (ADR-010).
 library;
 
 import 'dart:async';
@@ -26,6 +30,10 @@ class MapFeatureFlags implements FeatureFlags {
     'engine.stall_timeout_ms': 30000,
     'engine.max_concurrent_per_backend': 1,
     'engine.history_ttl_ms': 3600000,
+    // Strangler switch for the Manage page (installed apps):
+    // true → page reads StoreHost.installed(), false → legacy path.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'pages.manage.unified': false,
   };
 
   final Map<String, Object> _values;

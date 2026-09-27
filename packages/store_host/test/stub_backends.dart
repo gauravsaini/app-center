@@ -3,6 +3,7 @@ library;
 
 import 'package:backend_flatpak/backend_flatpak.dart'
     show FlatpakCommandException, FlatpakProcess, FlatpakTransport;
+import 'package:backend_flatpak/testing.dart';
 import 'package:store_host/store_host.dart';
 
 export 'package:backend_flatpak/testing.dart';
@@ -65,6 +66,55 @@ class ThrowingSearchBackend extends StubSnapBackend {
 
   @override
   Stream<AppInfo> search(String query) => Stream.error(Exception('boom'));
+}
+
+/// A backend returning canned installed apps — never overrides anything
+/// except the identity and the installed list.
+class StubInstalledBackend extends StubSnapBackend {
+  StubInstalledBackend({required this.backendId, required List<AppInfo> apps})
+    : _apps = apps;
+
+  final String backendId;
+  final List<AppInfo> _apps;
+
+  @override
+  String get id => backendId;
+
+  @override
+  Future<List<AppInfo>> listInstalled() async => _apps;
+}
+
+AppInfo stubInstalledApp(String backendId, String nativeId) => AppInfo(
+  identity: AppIdentity(backendId: backendId, nativeId: nativeId),
+  name: 'Installed $nativeId',
+  summary: '',
+  iconUrl: '',
+  source: AppSource.unknown,
+  installedVersion: '1.0',
+);
+
+/// A backend whose listInstalled always throws a typed error — proves
+/// installed() degrades to partial results instead of failing.
+class ThrowingInstalledBackend extends StubSnapBackend {
+  @override
+  String get id => 'thrower';
+
+  @override
+  Future<List<AppInfo>> listInstalled() => throw BackendUnavailableException(
+    debugDetail: 'thrower cannot enumerate installed apps',
+    backendId: 'thrower',
+  );
+}
+
+/// Flatpak transport reporting no installed apps — keeps the real
+/// [BackendFlatpak.listInstalled] quiet in host tests that pin the
+/// additive default (a backend that never overrides the method).
+class EmptyListFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'list') return const [];
+    return super.run(args);
+  }
 }
 
 /// Flatpak transport whose every command fails — proves the host

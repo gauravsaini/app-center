@@ -55,6 +55,43 @@ void main() {
     });
   });
 
+  group('BackendFlatpak.listInstalled', () {
+    test('parses flatpak list rows to AppInfos with versions set', () async {
+      final backend = BackendFlatpak(transport: StubFlatpakTransport());
+      final apps = await backend.listInstalled();
+      expect(apps, hasLength(2));
+      final first = apps.first;
+      expect(first.identity.backendId, 'flatpak');
+      expect(first.identity.nativeId, 'org.test.Installed');
+      expect(first.name, 'Test Installed');
+      expect(first.source, AppSource.flatpak);
+      expect(first.installedVersion, '2.0');
+      expect(first.isInstalled, isTrue);
+      expect(apps[1].identity.nativeId, 'org.test.Second');
+      expect(apps[1].installedVersion, '1.5');
+      expect(apps[1].isInstalled, isTrue);
+    });
+
+    test('skips header and unparsable lines', () async {
+      final backend = BackendFlatpak(transport: _NoisyFlatpakTransport());
+      final apps = await backend.listInstalled();
+      expect(apps.map((a) => a.identity.nativeId), ['org.test.Installed']);
+    });
+
+    test('transport failure throws a typed StoreException', () async {
+      final backend = BackendFlatpak(transport: _DeadFlatpakTransport());
+      expect(
+        () => backend.listInstalled(),
+        throwsA(isA<BackendUnavailableException>()),
+      );
+    });
+
+    test('empty installed list returns []', () async {
+      final backend = BackendFlatpak(transport: _EmptyFlatpakTransport());
+      expect(await backend.listInstalled(), isEmpty);
+    });
+  });
+
   group('progress parser', () {
     test('parses percent-only lines', () {
       final p = parseProgressLine('Downloading: 45%')!;
@@ -77,4 +114,41 @@ void main() {
       expect(parseProgressLine(''), isNull);
     });
   });
+}
+
+/// Mixes a header row, a valid row, and garbage: only the valid row
+/// survives parsing.
+class _NoisyFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'list') {
+      return [
+        'Application\tName\tVersion',
+        'org.test.Installed\tTest Installed\t2.0',
+        'this line has no reverse dns id',
+        '',
+      ];
+    }
+    return super.run(args);
+  }
+}
+
+/// flatpak binary missing.
+class _DeadFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'list') {
+      throw FlatpakCommandException(args, 127, 'command not found');
+    }
+    return super.run(args);
+  }
+}
+
+/// Nothing installed.
+class _EmptyFlatpakTransport extends StubFlatpakTransport {
+  @override
+  Future<List<String>> run(List<String> args) async {
+    if (args.first == 'list') return const [];
+    return super.run(args);
+  }
 }

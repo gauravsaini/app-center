@@ -10,7 +10,9 @@ import 'package:app_center/manage/local_snap_providers.dart';
 import 'package:app_center/manage/manage_app_data.dart';
 import 'package:app_center/manage/manage_app_tile.dart';
 import 'package:app_center/manage/snap_updates_model.dart';
+import 'package:app_center/manage/unified_manage_page.dart';
 import 'package:app_center/snapd/currently_installing_model.dart';
+import 'package:app_center/store/store_host_wiring.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ubuntu_widgets/ubuntu_widgets.dart';
@@ -25,6 +27,14 @@ class ManagePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Strangler-fig slice: when `pages.manage.unified` is on, the Manage
+    // page sources its installed list from StoreHost instead of snapd /
+    // PackageKit directly. Flag off (the default) keeps the legacy page
+    // below exactly as-is.
+    if (ref.watch(storeFlagsProvider).isEnabled('pages.manage.unified')) {
+      return const UnifiedManagePage();
+    }
+
     final appUpdatesModel = ref.watch(appUpdatesProvider);
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;

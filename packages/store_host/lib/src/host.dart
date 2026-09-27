@@ -116,11 +116,26 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   }
 
   @override
-  Future<List<UnifiedApp>> installed() {
-    // v1: not wired. Needs a `StoreBackend.listInstalled()` contract
-    // addition (minor version bump + exam coverage) — tracked in
-    // docs/architecture/host-wiring.md. Returns empty, never throws.
-    return Future.value(const []);
+  Future<List<UnifiedApp>> installed() async {
+    // One UnifiedApp per AppInfo — no cross-backend merging (v1 grouping
+    // policy, same as search()). A backend failing degrades to partial
+    // results — installed() itself never throws.
+    final out = <UnifiedApp>[];
+    for (final b in await enabledBackends()) {
+      try {
+        for (final app in await b.listInstalled()) {
+          out.add(
+            UnifiedApp(
+              groupId: '${b.id}:${app.identity.nativeId}',
+              variants: [app],
+            ),
+          );
+        }
+      } catch (_) {
+        // Partial results, as with search/checkUpdates.
+      }
+    }
+    return out;
   }
 
   @override

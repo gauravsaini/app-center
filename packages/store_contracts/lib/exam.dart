@@ -59,6 +59,7 @@ Future<void> runContractExam(
     );
   }
   await _recoverInFlight('$prefix recoverInFlight', create);
+  await _listInstalled('$prefix listInstalled', create);
 }
 
 Future<void> _isAvailable(String check, StoreBackend Function() create) async {
@@ -330,5 +331,53 @@ Future<void> _recoverInFlight(
         're-attached handle started at ${h.current.runtimeType}; must start with Restoring',
       );
     }
+  }
+}
+
+/// Validates the additive listInstalled() contract: completes in time,
+/// identities carry this backend's id, throws only StoreException
+/// subtypes. Typed throws are legal; raw throws fail.
+Future<void> _listInstalled(
+  String check,
+  StoreBackend Function() create,
+) async {
+  final backend = create();
+  late final List<AppInfo> apps;
+  try {
+    apps = await backend.listInstalled().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => throw ExamFailure('$check: listInstalled() hung'),
+    );
+  } on StoreException catch (e) {
+    _assertTypedError(check, e);
+    return;
+  } catch (e) {
+    _fail(check, 'threw raw ${e.runtimeType}, not a StoreException');
+  }
+  for (final app in apps) {
+    if (app.identity.backendId != backend.id) {
+      _fail(
+        check,
+        'installed identity ${app.identity} carries backendId '
+        '${app.identity.backendId} != ${backend.id}',
+      );
+    }
+  }
+}
+
+/// Pins the additive default: a backend that does not override
+/// listInstalled() must get [] — this is the LLD §10 guarantee that
+/// keeps this change minor instead of major.
+Future<void> runContractExamDefaultListInstalled(
+  String name,
+  StoreBackend Function() create,
+) async {
+  final backend = create();
+  final apps = await backend.listInstalled();
+  if (apps.isNotEmpty) {
+    throw ExamFailure(
+      '[$name] listInstalled default: expected [], got ${apps.length} apps; '
+      'a backend that does not override listInstalled() must get the default',
+    );
   }
 }

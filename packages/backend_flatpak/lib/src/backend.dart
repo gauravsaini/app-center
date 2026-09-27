@@ -266,6 +266,73 @@ class BackendFlatpak extends StoreBackend {
   }
 
   @override
+  Future<List<AppInfo>> listInstalled() async {
+    late final List<String> lines;
+    try {
+      lines = await transport.run([
+        'list',
+        '--app',
+        '--columns=application,name,version',
+      ]);
+    } on FlatpakCommandException catch (e) {
+      throw _mapError(e);
+    }
+    // One CLI round-trip: unlike snap/deb this needs no N+1 follow-up.
+    final apps = <AppInfo>[];
+    for (final line in lines) {
+      final app = _parseInstalledLine(line);
+      if (app != null) apps.add(app);
+    }
+    return apps;
+  }
+
+  /// Parses one `flatpak list --app --columns=application,name,version`
+  /// row. Columns are tab-separated; the application column is a
+  /// reverse-DNS id, so a row without one is skipped (header or noise).
+  /// Falls back to whitespace splitting when tabs are absent —
+  /// documented as heuristic, like [_parseSearchLine]: the CLI table
+  /// layout is not a stable API.
+  AppInfo? _parseInstalledLine(String line) {
+    final t = line.trim();
+    if (t.isEmpty) return null;
+    final cols = t
+        .split('\t')
+        .map((c) => c.trim())
+        .where((c) => c.isNotEmpty)
+        .toList();
+    if (cols.length >= 3 && _appIdRe.hasMatch(cols[0])) {
+      final version = cols[2];
+      return _installedAppInfo(cols[0], cols[1], version);
+    }
+    // Whitespace fallback: column order is still
+    // application,name,version — the id is the reverse-DNS token, the
+    // version the last token, the name everything in between.
+    final words = t.split(RegExp(r'\s+'));
+    final idIdx = words.indexWhere((w) => _appIdRe.hasMatch(w));
+    if (idIdx < 0) return null;
+    final rest = words.sublist(idIdx + 1);
+    final version = rest.isEmpty ? '' : rest.last;
+    final name = rest.length > 1
+        ? rest.sublist(0, rest.length - 1).join(' ')
+        : words[idIdx];
+    return _installedAppInfo(words[idIdx], name, version);
+  }
+
+  /// Builds the [AppInfo] for an installed flatpak. A row from
+  /// `flatpak list` is installed by definition, so [AppInfo.isInstalled]
+  /// must be true for every entry this returns.
+  AppInfo _installedAppInfo(String appId, String name, String version) =>
+      AppInfo(
+        identity: AppIdentity(backendId: id, nativeId: appId),
+        name: name.isEmpty ? appId : name,
+        summary: '',
+        iconUrl: '',
+        source: AppSource.flatpak,
+        version: version.isEmpty ? null : version,
+        installedVersion: version.isEmpty ? 'unknown' : version,
+      );
+
+  @override
   Future<List<OperationHandle>> recoverInFlight() async {
     // A CLI wrapper cannot re-attach to processes from a previous
     // app lifetime. Documented limitation, not a silent failure.

@@ -24,10 +24,12 @@ class SnapOperationHandle implements OperationHandle {
     required String changeId,
     required StoreException Function(SnapdTransportException e) mapError,
     Duration pollInterval = const Duration(milliseconds: 500),
+    Duration heartbeatInterval = const Duration(seconds: 60),
   }) : _transport = transport,
        _changeId = changeId,
        _mapError = mapError,
        _pollInterval = pollInterval,
+       _heartbeat = PhaseHeartbeat(interval: heartbeatInterval),
        _current = const Queued(position: 0) {
     unawaited(_run());
   }
@@ -39,6 +41,7 @@ class SnapOperationHandle implements OperationHandle {
       _mapError = ((e) =>
           UnknownStoreException(debugDetail: 'unreachable', backendId: 'snap')),
       _pollInterval = Duration.zero,
+      _heartbeat = PhaseHeartbeat(),
       _current = const Queued(position: 0) {
     unawaited(_runNoop());
   }
@@ -52,10 +55,12 @@ class SnapOperationHandle implements OperationHandle {
     required String changeId,
     required StoreException Function(SnapdTransportException e) mapError,
     Duration pollInterval = const Duration(milliseconds: 500),
+    Duration heartbeatInterval = const Duration(seconds: 60),
   }) : _transport = transport,
        _changeId = changeId,
        _mapError = mapError,
        _pollInterval = pollInterval,
+       _heartbeat = PhaseHeartbeat(interval: heartbeatInterval),
        _current = const Restoring() {
     unawaited(_run());
   }
@@ -70,6 +75,12 @@ class SnapOperationHandle implements OperationHandle {
   final String _changeId;
   final StoreException Function(SnapdTransportException) _mapError;
   final Duration _pollInterval;
+
+  /// Stall-watchdog heartbeat (`docs/architecture/stall-watchdog.md` §1):
+  /// re-emits a silent downloading/applying phase at least every
+  /// [PhaseHeartbeat.interval] so the engine sees liveness. Piggybacks
+  /// the existing poll loop — no new timer.
+  final PhaseHeartbeat _heartbeat;
   final _controller = StreamController<OperationState>.broadcast();
   OperationState _current;
   bool _cancelRequested = false;
@@ -86,6 +97,7 @@ class SnapOperationHandle implements OperationHandle {
 
   void _emit(OperationState s) {
     _current = s;
+    _heartbeat.markEmitted();
     if (!_closed) _controller.add(s);
   }
 
@@ -164,6 +176,11 @@ class SnapOperationHandle implements OperationHandle {
         break;
       }
       _emitState(_phaseFor(change));
+      // Heartbeat: re-emit a silent downloading/applying phase. The
+      // identical state object is a legal self-transition
+      // (Downloading→Downloading, Applying→Applying per the DAG), so
+      // this deliberately bypasses the _emitState progress-dedupe.
+      if (_heartbeat.shouldBeat(_current)) _emit(_current);
       await Future<void>.delayed(_pollInterval);
     }
     await _close();

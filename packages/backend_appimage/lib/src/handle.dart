@@ -20,8 +20,12 @@ class AppimageOperationCancelled implements Exception {
 }
 
 class AppimageOperationHandle implements OperationHandle {
-  AppimageOperationHandle._({required this.app, required this.kind})
-    : _current = const Queued(position: 0);
+  AppimageOperationHandle._({
+    required this.app,
+    required this.kind,
+    Duration heartbeatInterval = const Duration(seconds: 60),
+  }) : _current = const Queued(position: 0),
+       _heartbeat = PhaseHeartbeat(interval: heartbeatInterval);
 
   /// Run [body]: it emits its own phase states via [emit] and returns
   /// the terminal [OperationResult]. Throws map to terminal states:
@@ -33,8 +37,13 @@ class AppimageOperationHandle implements OperationHandle {
     required OperationKind kind,
     required Future<OperationResult> Function(AppimageOperationHandle handle)
     body,
+    Duration heartbeatInterval = const Duration(seconds: 60),
   }) {
-    final handle = AppimageOperationHandle._(app: app, kind: kind);
+    final handle = AppimageOperationHandle._(
+      app: app,
+      kind: kind,
+      heartbeatInterval: heartbeatInterval,
+    );
     unawaited(handle._execute(body));
     return handle;
   }
@@ -64,6 +73,14 @@ class AppimageOperationHandle implements OperationHandle {
   bool _closed = false;
   bool _cancelRequested = false;
 
+  /// Stall-watchdog heartbeat (`docs/architecture/stall-watchdog.md` §1):
+  /// re-emits a silent downloading/applying phase at least every
+  /// [PhaseHeartbeat.interval] so the engine sees liveness. The timer is
+  /// best-effort — its body is guarded and it can never break the
+  /// operation.
+  final PhaseHeartbeat _heartbeat;
+  Timer? _heartbeatTimer;
+
   @override
   Stream<OperationState> get state => _controller.stream;
 
@@ -77,7 +94,33 @@ class AppimageOperationHandle implements OperationHandle {
     if (_closed || _current.isTerminal) return;
     if (_current is Cancelling && !state.isTerminal) return;
     _current = state;
+    _heartbeat.markEmitted();
+    if (state is Downloading || state is Applying) {
+      _startHeartbeat();
+    } else {
+      _stopHeartbeat();
+    }
     _controller.add(state);
+  }
+
+  /// Start the periodic heartbeat on the first downloading/applying
+  /// emission; idempotent — later emissions in the same phase re-use it.
+  void _startHeartbeat() {
+    _heartbeatTimer ??= Timer.periodic(_heartbeat.interval, (_) {
+      try {
+        // The identical state object is a legal self-transition
+        // (Downloading→Downloading, Applying→Applying per the DAG).
+        if (_heartbeat.shouldBeat(_current)) emit(_current);
+      } catch (_) {
+        // Best-effort: the heartbeat must never break the operation.
+      }
+    });
+  }
+
+  /// Cancel the heartbeat on phase change and terminal states.
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   /// Throws [AppimageOperationCancelled] when [cancel] was requested.

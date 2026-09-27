@@ -115,6 +115,20 @@ class MapFeatureFlags implements FeatureFlags {
     // index is never loaded. New foundation, needs dogfooding.
     // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
     'phase3.identity.enabled': false,
+    // Phase 3 community index distribution
+    // (docs/architecture/phase3-slice3.md §4): true → an explicit
+    // StoreHost.refreshCommunityIndex() call may fetch a signed
+    // community index layer; false (default) → refresh always reports
+    // `skipped`. Opt-in: there is no automatic download anywhere —
+    // refresh is always an explicit call.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'phase3.community.enabled': false,
+    // Comma-separated HTTPS mirror URLs for the community index
+    // (phase3-slice3.md §4): tried in order, first fully-verified doc
+    // wins. House pattern — same shape as `catalog.backend_order`.
+    // Empty (default) → no fetch, ever.
+    // Owner: libreapp-center. Removal date: 2027-06-30 (ADR-010).
+    'phase3.community.mirrors': '',
   };
 
   final Map<String, Object> _values;

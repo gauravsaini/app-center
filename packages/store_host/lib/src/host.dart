@@ -13,11 +13,15 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:store_contracts/store_contracts.dart';
 
 import 'check_updates_result.dart';
+import 'identity/community_crypto.dart';
+import 'identity/community_refresh.dart';
+import 'identity/community_transport.dart';
 import 'identity/file_identity_index.dart';
 import 'identity/identity_resolver.dart';
 import 'identity/seed_index.dart';
@@ -73,14 +77,21 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     TimerFactory? timerFactory,
     Clock? clock,
     String? sourcePreferencesPath,
+    Map<String, String>? environment,
   }) : _flags = flags,
        _timerFactory = timerFactory ?? _realTimerFactory,
        _clock = clock ?? _realClock,
-       _sourcePreferencesPath = sourcePreferencesPath;
+       _sourcePreferencesPath = sourcePreferencesPath,
+       _environment = environment ?? Platform.environment;
 
   final FeatureFlags _flags;
   final TimerFactory _timerFactory;
   final Clock _clock;
+
+  /// Process environment, injected for tests (default:
+  /// [Platform.environment]). `HOME` locates the identity overlay and
+  /// the community layer file.
+  final Map<String, String> _environment;
 
   /// Overrides the source-preferences file location (tests). Null →
   /// the store resolves `~/.local/share/libreapp-center/
@@ -98,7 +109,8 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
 
   /// Lazy Phase 3 identity plumbing (phase3-identity-hld.md). Built on
   /// the first [resolveIdentity] call and cached for the host's
-  /// lifetime — slice 1 has no reload API. Never built when
+  /// lifetime — [reloadIdentityIndex] drops the cache so the next
+  /// call rebuilds from disk (phase3-slice3.md §6). Never built when
   /// `phase3.identity.enabled` is false.
   IdentityIndex? _identityIndex;
   IdentityResolver? _identityResolver;
@@ -591,10 +603,12 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   /// the index is never even loaded).
   ///
   /// The index loads lazily on first call and is cached for the host's
-  /// lifetime (slice 1: no reload API): the bundled seed layer plus the
-  /// local overlay at
-  /// `~/.local/share/libreapp-center/identity-overlay.json` when
-  /// `HOME` is set (no overlay when it is absent).
+  /// lifetime, reloadable via [reloadIdentityIndex]: the bundled seed
+  /// layer, then the community layer at
+  /// `~/.local/share/libreapp-center/identity-community.json`, then
+  /// the local overlay at
+  /// `~/.local/share/libreapp-center/identity-overlay.json` — both
+  /// `HOME`-relative, both absent when `HOME` is unset.
   Future<CanonicalAppId?> resolveIdentity(
     AppIdentity id, [
     IdentitySignal? signals,
@@ -604,7 +618,8 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
     if (resolver == null) {
       _identityIndex = await FileIdentityIndexStore().load(
         seedJson: kIdentitySeedJson,
-        overlayPaths: _identityOverlayPaths(),
+        communityPaths: _identityCommunityPaths(),
+        overlayPaths: _identityOverlayPaths(environment: _environment),
       );
       resolver = IdentityResolver(
         index: _identityIndex!,
@@ -616,12 +631,173 @@ class StoreHost implements UnifiedCatalog, OperationEngine {
   }
 
   /// Overlay paths for the lazy identity index (LLD §5.4): the local
-  /// overlay only, resolved from `HOME`. Empty (no overlay) when `HOME`
-  /// is absent — resolution falls back to the bundled seed.
-  static List<String> _identityOverlayPaths() {
-    final home = Platform.environment['HOME'];
+  /// overlay only, resolved from the given environment. Empty (no
+  /// overlay) when `HOME` is absent — resolution falls back to the
+  /// bundled seed.
+  static List<String> _identityOverlayPaths({
+    required Map<String, String> environment,
+  }) {
+    final home = environment['HOME'];
     if (home == null || home.isEmpty) return const [];
     return ['$home/.local/share/libreapp-center/identity-overlay.json'];
+  }
+
+  /// Community layer file for the lazy identity index
+  /// (phase3-slice3.md §5): the operator-fetched, signature-verified
+  /// community doc lives here — written ONLY by
+  /// [refreshCommunityIndex], after verification. Null when `HOME` is
+  /// absent: refresh then reports `skipped`, and resolution falls
+  /// back to seed + local overlay.
+  static String? _communityLayerPath({
+    required Map<String, String> environment,
+  }) {
+    final home = environment['HOME'];
+    if (home == null || home.isEmpty) return null;
+    return '$home/.local/share/libreapp-center/identity-community.json';
+  }
+
+  /// Community layer paths for the lazy identity index: the fetched
+  /// file above, or empty when `HOME` is absent (no community file).
+  List<String> _identityCommunityPaths() {
+    final path = _communityLayerPath(environment: _environment);
+    return path == null ? const [] : [path];
+  }
+
+  /// Drops the cached identity index and resolver
+  /// (docs/architecture/phase3-slice3.md §6). The next
+  /// [resolveIdentity] call reloads from disk — bundled seed, then
+  /// the community layer, then the local overlay, in that priority
+  /// order.
+  ///
+  /// Reload contract: the swap replaces the immutable
+  /// [IdentityIndex]/[IdentityResolver] references, so in-flight
+  /// resolutions finish on the old index (no tearing, no locks).
+  /// Never throws: worst case the next load yields the seed-only
+  /// index ([FileIdentityIndexStore.load] never throws).
+  void reloadIdentityIndex() {
+    _identityIndex = null;
+    _identityResolver = null;
+  }
+
+  /// Fetches, verifies, and installs the community identity index
+  /// layer (docs/architecture/phase3-slice3.md §5).
+  ///
+  /// The flow: gate (identity enabled + community enabled + mirrors
+  /// non-empty + `HOME` present, else `skipped`) → per mirror
+  /// (https-only): fetch → parse JSON object → verify the Ed25519
+  /// signature envelope → atomic write (temp + rename) to the
+  /// community layer file → [reloadIdentityIndex] → `ok`. All
+  /// mirrors fail → `failed` with per-mirror error strings; the
+  /// previous community file (if any) and the in-memory index are
+  /// untouched.
+  ///
+  /// Explicit-only: nothing in the host ever calls this on a timer or
+  /// at startup — there is no automatic download anywhere. Never
+  /// throws: "all mirrors down" is an expected outcome, reported as
+  /// `failed`, not an exception.
+  Future<CommunityRefreshResult> refreshCommunityIndex({
+    CommunityIndexTransport? transport,
+    CommunityTrustStore trust = CommunityTrustStore.bootstrap,
+  }) async {
+    if (!_flags.isEnabled('phase3.identity.enabled')) {
+      return const CommunityRefreshResult.skipped(
+        'phase3.identity.enabled is false',
+      );
+    }
+    if (!_flags.isEnabled('phase3.community.enabled')) {
+      return const CommunityRefreshResult.skipped(
+        'phase3.community.enabled is false',
+      );
+    }
+    final mirrors = _flags
+        .getString('phase3.community.mirrors')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (mirrors.isEmpty) {
+      return const CommunityRefreshResult.skipped(
+        'phase3.community.mirrors is empty — no fetch, ever',
+      );
+    }
+    final communityPath = _communityLayerPath(environment: _environment);
+    if (communityPath == null) {
+      return const CommunityRefreshResult.skipped(
+        'HOME is not set — no community layer file location',
+      );
+    }
+
+    final fetcher = transport ?? HttpCommunityIndexTransport();
+    final errors = <String, String>{};
+    for (final mirror in mirrors) {
+      final uri = Uri.tryParse(mirror);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        errors[mirror] = 'skipped: only https:// mirror URLs are accepted';
+        continue;
+      }
+      final String body;
+      try {
+        body = await fetcher.fetch(uri);
+      } on CommunityFetchException catch (e) {
+        errors[mirror] = 'fetch failed: ${e.message}';
+        continue;
+      } catch (e) {
+        // A transport that throws something else must not take the
+        // refresh down with it either.
+        errors[mirror] = 'fetch failed: $e';
+        continue;
+      }
+      final Map<String, Object?> raw;
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map<String, Object?>) {
+          raw = decoded;
+        } else if (decoded is Map) {
+          raw = Map<String, Object?>.from(decoded);
+        } else {
+          errors[mirror] = 'parse failed: not a JSON object';
+          continue;
+        }
+      } on FormatException catch (e) {
+        errors[mirror] = 'parse failed: ${e.message}';
+        continue;
+      }
+      final VerifiedCommunityDoc verified;
+      try {
+        verified = await verifyCommunityDoc(raw, trust);
+      } on CommunitySignatureException catch (e) {
+        errors[mirror] = 'signature rejected: ${e.message}';
+        continue;
+      }
+      try {
+        // Verify-before-write: the previous community file is only
+        // replaced after a doc FULLY verifies.
+        await _atomicWriteFile(communityPath, body);
+      } on IOException catch (e) {
+        errors[mirror] = 'write failed: $e';
+        continue;
+      }
+      reloadIdentityIndex();
+      final entries = verified.doc['entries'];
+      return CommunityRefreshResult.ok(
+        entryCount: entries is List ? entries.length : 0,
+        generatedAt: verified.generatedAt,
+        mirror: mirror,
+      );
+    }
+    return CommunityRefreshResult.failed(errors);
+  }
+
+  /// Atomic file swap: write to `<path>.tmp` then rename. A crash
+  /// mid-write never leaves a half-written layer file. Throws
+  /// [IOException] on unrecoverable I/O — the refresh caller catches
+  /// it per mirror and reports `failed`, leaving the previous layer
+  /// and the in-memory index untouched.
+  static Future<void> _atomicWriteFile(String path, String content) async {
+    final tmp = File('$path.tmp');
+    await tmp.parent.create(recursive: true);
+    await tmp.writeAsString(content);
+    await tmp.rename(path);
   }
 
   /// Backend-agnostic details lookup (host convenience, not in the
